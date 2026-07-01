@@ -1,0 +1,151 @@
+import { readFile } from "node:fs/promises";
+import type { EnvHealthResult, EnvSource, EnvSourceReadResult, HealthIssueType, SourceErrorType } from "../shared/types";
+import { parseEnvContent } from "../shared/envParser";
+import { readSshRemoteEnvFile } from "./sshRemoteReader";
+
+export interface SourceTestResult {
+  sourceId: string;
+  status: "success" | "failed";
+  keyCount: number;
+  errorType?: SourceErrorType;
+  errorMessage?: string;
+}
+
+const emptyHealthSummary: Record<HealthIssueType, number> = {
+  duplicate_key: 0,
+  parse_failure: 0,
+  empty_value: 0,
+  whitespace_only_value: 0,
+  empty_key: 0,
+  illegal_key_name: 0
+};
+
+export async function readSourceForComparison(source: EnvSource): Promise<EnvSourceReadResult> {
+  if (!canReadSource(source)) {
+    return failedRead(source, "unsupported_source", "Source type is not supported.");
+  }
+
+  const content = await readSourceContent(source);
+  if (!content.ok) {
+    return failedRead(source, content.errorType, content.errorMessage);
+  }
+
+  const parsed = parseEnvContent(content.content);
+  if (parsed.parseFailures.length > 0) {
+    return failedRead(source, "parse_failed", `Source has ${parsed.parseFailures.length} parse failure(s).`);
+  }
+
+  return {
+    sourceId: source.id,
+    sourceName: source.name,
+    status: "success",
+    values: parsed.values,
+    keyCount: Object.keys(parsed.values).length
+  };
+}
+
+export async function testSourceReadability(source: EnvSource): Promise<SourceTestResult> {
+  const result = await readSourceForComparison(source);
+  if (result.status === "success") {
+    return {
+      sourceId: source.id,
+      status: "success",
+      keyCount: result.keyCount
+    };
+  }
+
+  return {
+    sourceId: source.id,
+    status: "failed",
+    keyCount: 0,
+    errorType: result.errorType,
+    errorMessage: result.errorMessage
+  };
+}
+
+export async function readSourceHealth(source: EnvSource): Promise<EnvHealthResult> {
+  if (!canReadSource(source)) {
+    return failedHealth(source, "unsupported_source", "Source type is not supported.");
+  }
+
+  const content = await readSourceContent(source);
+  if (!content.ok) {
+    return failedHealth(source, content.errorType, content.errorMessage);
+  }
+
+  const parsed = parseEnvContent(content.content);
+  const summary = { ...emptyHealthSummary };
+  parsed.issues.forEach((issue) => {
+    summary[issue.type] += 1;
+  });
+
+  return {
+    sourceId: source.id,
+    sourceName: source.name,
+    status: parsed.parseFailures.length > 0 ? "failed" : "success",
+    keyCount: Object.keys(parsed.values).length,
+    values: parsed.values,
+    issues: parsed.issues,
+    summary,
+    errorType: parsed.parseFailures.length > 0 ? "parse_failed" : undefined,
+    errorMessage:
+      parsed.parseFailures.length > 0
+        ? `Source has ${parsed.parseFailures.length} parse failure(s).`
+        : undefined
+  };
+}
+
+async function readSourceContent(
+  source: EnvSource
+): Promise<{ ok: true; content: string } | { ok: false; errorType: SourceErrorType; errorMessage: string }> {
+  if (source.type === "ssh-remote-file") {
+    return readSshRemoteEnvFile(source);
+  }
+
+  try {
+    return { ok: true, content: await readFile(source.localFile?.filePath ?? "", "utf8") };
+  } catch (error) {
+    const { errorType, errorMessage } = mapFileReadError(error);
+    return { ok: false, errorType, errorMessage };
+  }
+}
+
+function canReadSource(source: EnvSource) {
+  return (source.type === "local-file" && source.localFile) || (source.type === "ssh-remote-file" && source.sshRemoteFile);
+}
+
+function failedRead(source: EnvSource, errorType: SourceErrorType, errorMessage: string): EnvSourceReadResult {
+  return {
+    sourceId: source.id,
+    sourceName: source.name,
+    status: "failed",
+    keyCount: 0,
+    errorType,
+    errorMessage
+  };
+}
+
+function failedHealth(source: EnvSource, errorType: SourceErrorType, errorMessage: string): EnvHealthResult {
+  return {
+    sourceId: source.id,
+    sourceName: source.name,
+    status: "failed",
+    keyCount: 0,
+    values: {},
+    issues: [],
+    summary: { ...emptyHealthSummary },
+    errorType,
+    errorMessage
+  };
+}
+
+function mapFileReadError(error: unknown): { errorType: SourceErrorType; errorMessage: string } {
+  const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
+  if (code === "ENOENT") {
+    return { errorType: "path_not_found", errorMessage: "Local file path was not found." };
+  }
+  if (code === "EACCES" || code === "EPERM") {
+    return { errorType: "permission_denied", errorMessage: "Local file is not readable by this user." };
+  }
+  return { errorType: "read_failed", errorMessage: "Local file could not be read." };
+}

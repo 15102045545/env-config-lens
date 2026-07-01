@@ -6,7 +6,20 @@ The tool is designed for developers and technical leads who need to inspect conf
 
 ## Status
 
-This repository is currently a PRD-first public scaffold. The phase-one implementation is not present yet.
+This repository now contains the M1 local foundation and M2 SSH remote source implementation:
+
+- Fastify local service bound to `127.0.0.1`.
+- Startup session token required for `/api/*`.
+- React/Vite/Tailwind local GUI with Comparison, Health, and Settings.
+- SQLite source settings persistence through Node built-in SQLite.
+- Local file source management and backend-driven macOS file picker.
+- SSH remote file source management in standard field mode and SSH config alias mode.
+- Backend-driven private key path picker.
+- System OpenSSH remote reads with `known_hosts` verification kept enabled.
+- Optional macOS Keychain passphrase references; passphrases are not stored in SQLite.
+- On-demand local env reads for comparison and health.
+- On-demand SSH env reads for comparison and health.
+- Parser, comparison, persistence, API security, binding, SSH adapter, no-leak, and UI tests.
 
 The canonical product requirement document is:
 
@@ -17,20 +30,20 @@ Implementation is split into milestone PRDs:
 - M1 local foundation: [`harness/demand/env-config-lens/PRD-env-config-lens-M1-local-foundation.md`](harness/demand/env-config-lens/PRD-env-config-lens-M1-local-foundation.md)
 - M2 SSH remote sources: [`harness/demand/env-config-lens/PRD-env-config-lens-M2-ssh-remote.md`](harness/demand/env-config-lens/PRD-env-config-lens-M2-ssh-remote.md)
 
-## Phase-One Product Shape
+## Product Shape
 
 - Web UI plus local service.
 - macOS first.
-- M1 ships a local-file-only foundation.
-- M2 adds SSH remote file sources after the SSH and Keychain gates are closed.
+- M1 ships the local-file-only foundation implemented in this repository.
+- M2 adds SSH remote file sources through system OpenSSH and macOS Keychain references.
 - Local service binds only to `127.0.0.1`.
 - Startup session token required for frontend API calls.
 - CORS restricted to the local UI origin.
 - Local file env sources.
-- SSH remote file env sources.
+- SSH remote file env sources are planned for M2.
 - Settings persisted locally in SQLite.
-- Private key contents never imported or stored.
-- Passphrases stored through macOS Keychain when needed.
+- Private key contents are never imported or stored in M2.
+- Passphrases are stored through macOS Keychain when needed in M2.
 - Env contents and values kept in memory only for each request.
 - Multi-environment key/value comparison.
 - Single-source env health governance.
@@ -59,9 +72,48 @@ A local file source stores only source metadata such as name, file path, enabled
 
 ### SSH Remote File Source
 
-An SSH source is planned for M2. It reads one configured remote env file through either explicit SSH fields or a local `~/.ssh/config` alias. It does not expose arbitrary remote command input and does not use `sudo` by default.
+An SSH source reads one configured remote env file through either explicit SSH fields or a local `~/.ssh/config` alias. It does not expose arbitrary remote command input and does not use `sudo` by default.
 
-## Planned UI
+The backend launches system OpenSSH without a local shell, keeps `StrictHostKeyChecking=yes`, disables password fallback, and captures remote stdout in memory for the current request only. SSH source tests return success or sanitized failure metadata without returning env contents.
+
+## Local Startup
+
+Requirements:
+
+- Node.js `>=24.14.0`.
+- pnpm `>=11.0.0`.
+
+Install and start:
+
+```bash
+pnpm install
+pnpm start
+```
+
+`pnpm start` builds the Web UI, starts the local service on `127.0.0.1:4173` by default, generates a startup token, prints the local URL, and opens the browser automatically.
+
+Useful environment variables:
+
+```bash
+PORT=4180 pnpm start
+ENV_CONFIG_LENS_DATA_DIR=.local/dev-data pnpm start
+```
+
+## Scripts
+
+```bash
+pnpm test
+pnpm build
+pnpm verify:binding
+pnpm seed:local
+```
+
+- `pnpm test` runs parser, comparison, SQLite, seed, API security, SSH, binding, and UI tests.
+- `pnpm build` builds the frontend and runs TypeScript checks.
+- `pnpm verify:binding` starts a temporary service and confirms it listens on `127.0.0.1`.
+- `pnpm seed:local` imports local source settings from `.local/env-sources.local.json`.
+
+## UI
 
 The application has three main entries:
 
@@ -75,10 +127,14 @@ The comparison view is a matrix:
 - Columns are selected env sources.
 - Cells show complete values.
 - Row statuses include `missing`, `same`, `different`, `empty`, and `source-only`.
+- Same rows are available through filters; the default focus is problem rows.
+- Long values can be expanded and copied one value at a time.
+- One key's multi-source comparison can be copied.
+- No full env export action is provided.
 
 ## Local Development Seeds
 
-Implementation work may use a Git-ignored local seed file:
+Development may use a Git-ignored local seed file:
 
 ```text
 .local/env-sources.local.json
@@ -86,7 +142,24 @@ Implementation work may use a Git-ignored local seed file:
 
 This file is for developer-owned source settings only. It must never contain env contents or env values, and it must never be committed.
 
-## Planned Stack
+Example shape:
+
+```json
+{
+  "sources": [
+    {
+      "name": "Local dev",
+      "filePath": "/path/to/local.env",
+      "enabled": true,
+      "note": "Developer-owned local source"
+    }
+  ]
+}
+```
+
+The seed import writes only source settings to SQLite and logs only the number of imported source settings.
+
+## Stack
 
 - TypeScript.
 - Node.js.
@@ -94,27 +167,25 @@ This file is for developer-owned source settings only. It must never contain env
 - React.
 - Vite.
 - Tailwind CSS.
-- SQLite.
-- SSH adapter based on a mature Node library or system `ssh`.
+- SQLite through Node built-in SQLite.
+- SSH adapter based on system OpenSSH.
 - macOS file picker adapter.
-- macOS Keychain adapter.
-
-## Planned Startup
-
-The implementation target is one-command local startup:
-
-```bash
-pnpm install
-pnpm start
-```
-
-The command should start the local service, prepare or serve the Web UI, bind to `127.0.0.1`, generate the session token, and open the browser automatically.
+- macOS Keychain reference adapter.
 
 ## Repository Hygiene
 
 The `.gitignore` excludes local seeds, local databases, logs, dependencies, and build outputs.
 
 Before publishing or accepting contributions, verify that no env contents, env values, private keys, local database files, or machine-specific seed files are tracked.
+
+Recommended checks before release:
+
+```bash
+git status --short
+pnpm test
+pnpm verify:binding
+pnpm build
+```
 
 ## License
 

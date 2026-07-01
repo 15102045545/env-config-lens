@@ -1,0 +1,1104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Env Config Lens</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23182230'/%3E%3Cpath d='M16 20h32M16 32h18M16 44h28' stroke='white' stroke-width='5' stroke-linecap='round'/%3E%3Ccircle cx='46' cy='32' r='5' fill='%232563eb'/%3E%3C/svg%3E" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              ink: "#182230",
+              line: "#d9e0e8",
+              panel: "#ffffff",
+              field: "#f6f8fb",
+              local: "#2563eb",
+              remote: "#0f766e",
+              risk: "#b45309",
+              danger: "#b42318",
+              ok: "#15803d"
+            },
+            fontFamily: {
+              sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+              mono: ["JetBrains Mono", "SFMono-Regular", "ui-monospace", "monospace"]
+            },
+            boxShadow: {
+              soft: "0 14px 34px rgba(15, 23, 42, 0.08)"
+            }
+          }
+        }
+      };
+    </script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        min-width: 320px;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+
+      button:focus-visible,
+      a:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible {
+        outline: 3px solid rgba(37, 99, 235, 0.28);
+        outline-offset: 2px;
+      }
+
+      .app-view {
+        display: none;
+      }
+
+      .app-view.is-active {
+        display: block;
+      }
+
+      .nav-button[aria-current="page"] {
+        border-color: #2563eb;
+        background: #eff6ff;
+        color: #1d4ed8;
+      }
+
+      .chip[data-active="true"],
+      .source-chip[data-active="true"],
+      .issue-chip[data-active="true"] {
+        border-color: #2563eb;
+        background: #eff6ff;
+        color: #1d4ed8;
+      }
+
+      .value-cell.is-expanded .value-preview {
+        max-height: 9.5rem;
+        white-space: pre-wrap;
+      }
+
+      .value-preview {
+        max-height: 3.15rem;
+        overflow: hidden;
+      }
+
+      .matrix-row.is-hidden,
+      .health-row.is-hidden,
+      .issue-row.is-hidden,
+      .source-row.is-hidden {
+        display: none;
+      }
+
+      .toast {
+        transform: translateY(120%);
+        opacity: 0;
+        pointer-events: none;
+        transition: transform 180ms ease, opacity 180ms ease;
+      }
+
+      .toast.is-visible {
+        transform: translateY(0);
+        opacity: 1;
+      }
+
+      .modal {
+        display: none;
+      }
+
+      .modal.is-open {
+        display: flex;
+      }
+
+      @media (max-width: 767px) {
+        .desktop-only {
+          display: none;
+        }
+
+        .value-preview {
+          max-height: 4.4rem;
+        }
+      }
+    </style>
+  </head>
+  <body class="bg-[#eef3f8] text-ink antialiased">
+    <div class="min-h-screen lg:flex">
+      <aside class="border-b border-line bg-panel lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:border-b-0 lg:border-r">
+        <div class="flex items-center gap-3 px-4 py-4 lg:px-5 lg:py-6">
+          <div class="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-ink text-white">
+            <i data-lucide="scan-line" class="h-5 w-5"></i>
+          </div>
+          <div class="min-w-0">
+            <h1 class="truncate text-base font-semibold tracking-normal">Env Config Lens</h1>
+            <p class="truncate text-xs text-slate-500">Local env comparison console</p>
+          </div>
+        </div>
+
+        <nav class="flex gap-2 overflow-x-auto px-4 pb-4 lg:block lg:space-y-2 lg:overflow-visible lg:px-5">
+          <button class="nav-button flex min-w-fit items-center gap-2 rounded-md border border-transparent px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 lg:w-full" data-view-target="comparison" aria-current="page">
+            <i data-lucide="columns-3" class="h-4 w-4"></i>
+            <span>Comparison</span>
+          </button>
+          <button class="nav-button flex min-w-fit items-center gap-2 rounded-md border border-transparent px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 lg:w-full" data-view-target="health">
+            <i data-lucide="activity" class="h-4 w-4"></i>
+            <span>Health</span>
+          </button>
+          <button class="nav-button flex min-w-fit items-center gap-2 rounded-md border border-transparent px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 lg:w-full" data-view-target="settings">
+            <i data-lucide="settings-2" class="h-4 w-4"></i>
+            <span>Settings</span>
+          </button>
+        </nav>
+
+        <div class="hidden px-5 py-4 lg:block">
+          <div class="rounded-lg border border-line bg-field p-3">
+            <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <i data-lucide="shield-check" class="h-3.5 w-3.5"></i>
+              Runtime boundary
+            </div>
+            <dl class="mt-3 space-y-2 text-xs">
+              <div class="flex items-center justify-between gap-3">
+                <dt class="text-slate-500">Bind</dt>
+                <dd class="font-mono text-ink">127.0.0.1</dd>
+              </div>
+              <div class="flex items-center justify-between gap-3">
+                <dt class="text-slate-500">Token</dt>
+                <dd class="font-mono text-ok">required</dd>
+              </div>
+              <div class="flex items-center justify-between gap-3">
+                <dt class="text-slate-500">Storage</dt>
+                <dd class="font-mono text-ink">settings only</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </aside>
+
+      <main class="min-w-0 flex-1">
+        <header class="border-b border-line bg-panel/90 px-4 py-3 backdrop-blur lg:px-6">
+          <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div class="min-w-0">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Phase-one prototype</p>
+              <h2 id="view-title" class="text-xl font-semibold tracking-normal">Multi-environment comparison</h2>
+            </div>
+            <div class="grid gap-2 text-xs sm:grid-cols-2 xl:flex">
+              <span class="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-blue-800">
+                <i data-lucide="wifi" class="h-3.5 w-3.5"></i>
+                Local service only
+              </span>
+              <span class="inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
+                <i data-lucide="database" class="h-3.5 w-3.5"></i>
+                SQLite stores settings
+              </span>
+              <span class="inline-flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+                <i data-lucide="key-round" class="h-3.5 w-3.5"></i>
+                Keychain references
+              </span>
+              <span class="inline-flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-red-800">
+                <i data-lucide="file-x-2" class="h-3.5 w-3.5"></i>
+                No full env export
+              </span>
+            </div>
+          </div>
+        </header>
+
+        <section id="comparison" class="app-view is-active px-4 py-5 lg:px-6">
+          <div class="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div class="min-w-0 space-y-4">
+              <div class="rounded-lg border border-line bg-panel p-4 shadow-soft">
+                <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <h3 class="text-base font-semibold">Comparison run</h3>
+                      <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">4 successful</span>
+                      <span class="rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">1 failed</span>
+                    </div>
+                    <p class="mt-1 max-w-3xl text-sm text-slate-600">Selected sources are read on demand. Failed or parse-failed sources stay at source level and do not participate in row classification.</p>
+                  </div>
+                  <div class="flex flex-wrap gap-2">
+                    <button class="inline-flex items-center gap-2 rounded-md border border-line bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" data-action="copy-row" data-key="DATABASE_URL">
+                      <i data-lucide="copy" class="h-4 w-4"></i>
+                      Copy selected key
+                    </button>
+                    <button class="inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800">
+                      <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+                      Run compare
+                    </button>
+                  </div>
+                </div>
+
+                <div class="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+                  <div class="rounded-md border border-line bg-field p-3">
+                    <p class="text-xs text-slate-500">Sources</p>
+                    <p class="mt-1 text-xl font-semibold">5</p>
+                  </div>
+                  <div class="rounded-md border border-line bg-field p-3">
+                    <p class="text-xs text-slate-500">Union keys</p>
+                    <p class="mt-1 text-xl font-semibold">148</p>
+                  </div>
+                  <div class="rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                    <p class="text-xs text-emerald-700">Same</p>
+                    <p class="mt-1 text-xl font-semibold text-emerald-900">82</p>
+                  </div>
+                  <div class="rounded-md border border-blue-200 bg-blue-50 p-3">
+                    <p class="text-xs text-blue-700">Different</p>
+                    <p class="mt-1 text-xl font-semibold text-blue-900">31</p>
+                  </div>
+                  <div class="rounded-md border border-amber-200 bg-amber-50 p-3">
+                    <p class="text-xs text-amber-700">Missing</p>
+                    <p class="mt-1 text-xl font-semibold text-amber-900">19</p>
+                  </div>
+                  <div class="rounded-md border border-red-200 bg-red-50 p-3">
+                    <p class="text-xs text-red-700">Empty</p>
+                    <p class="mt-1 text-xl font-semibold text-red-900">7</p>
+                  </div>
+                  <div class="rounded-md border border-purple-200 bg-purple-50 p-3">
+                    <p class="text-xs text-purple-700">Source-only</p>
+                    <p class="mt-1 text-xl font-semibold text-purple-900">9</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="rounded-lg border border-line bg-panel p-4">
+                <div class="grid gap-3 xl:grid-cols-[minmax(220px,1fr)_auto] xl:items-center">
+                  <label class="relative block">
+                    <i data-lucide="search" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"></i>
+                    <input id="compare-search" class="h-10 w-full rounded-md border border-line bg-white pl-9 pr-3 text-sm" placeholder="Search keys or values" />
+                  </label>
+                  <div class="flex flex-wrap gap-2">
+                    <button class="chip rounded-md border border-line bg-white px-3 py-2 text-xs font-medium text-slate-600" data-status="problem" data-active="true">Problems</button>
+                    <button class="chip rounded-md border border-line bg-white px-3 py-2 text-xs font-medium text-slate-600" data-status="different">Different</button>
+                    <button class="chip rounded-md border border-line bg-white px-3 py-2 text-xs font-medium text-slate-600" data-status="missing">Missing</button>
+                    <button class="chip rounded-md border border-line bg-white px-3 py-2 text-xs font-medium text-slate-600" data-status="empty">Empty</button>
+                    <button class="chip rounded-md border border-line bg-white px-3 py-2 text-xs font-medium text-slate-600" data-status="source-only">Source-only</button>
+                    <button class="chip rounded-md border border-line bg-white px-3 py-2 text-xs font-medium text-slate-600" data-status="same">Same</button>
+                    <button class="chip rounded-md border border-line bg-white px-3 py-2 text-xs font-medium text-slate-600" data-status="all">All</button>
+                  </div>
+                </div>
+
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <button class="source-chip rounded-full border border-line bg-white px-3 py-1.5 text-xs font-medium text-slate-600" data-source="local-dev" data-active="true">local-dev</button>
+                  <button class="source-chip rounded-full border border-line bg-white px-3 py-1.5 text-xs font-medium text-slate-600" data-source="local-prod" data-active="true">local-prod</button>
+                  <button class="source-chip rounded-full border border-line bg-white px-3 py-1.5 text-xs font-medium text-slate-600" data-source="ssh-staging" data-active="true">ssh-staging</button>
+                  <button class="source-chip rounded-full border border-line bg-white px-3 py-1.5 text-xs font-medium text-slate-600" data-source="ssh-production" data-active="true">ssh-production</button>
+                  <button class="source-chip rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700" data-source="ssh-canary" data-active="true">ssh-canary failed</button>
+                </div>
+              </div>
+
+              <div class="overflow-hidden rounded-lg border border-line bg-panel">
+                <div class="overflow-x-auto">
+                  <table class="min-w-[1120px] border-separate border-spacing-0 text-left text-sm">
+                    <thead class="bg-field text-xs uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th class="sticky left-0 z-10 w-56 border-b border-line bg-field px-4 py-3 font-semibold">Key</th>
+                        <th class="w-32 border-b border-line px-3 py-3 font-semibold">Status</th>
+                        <th class="w-56 border-b border-line px-3 py-3 font-semibold" data-column-source="local-dev">local-dev</th>
+                        <th class="w-56 border-b border-line px-3 py-3 font-semibold" data-column-source="local-prod">local-prod</th>
+                        <th class="w-56 border-b border-line px-3 py-3 font-semibold" data-column-source="ssh-staging">ssh-staging</th>
+                        <th class="w-56 border-b border-line px-3 py-3 font-semibold" data-column-source="ssh-production">ssh-production</th>
+                        <th class="w-48 border-b border-line px-3 py-3 font-semibold" data-column-source="ssh-canary">ssh-canary</th>
+                        <th class="w-24 border-b border-line px-3 py-3 font-semibold">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="matrix-body" class="divide-y divide-line">
+                      <tr class="matrix-row align-top" data-status="different" data-text="database_url postgres app local prod staging production">
+                        <th class="sticky left-0 z-10 border-b border-line bg-white px-4 py-3 font-mono text-xs font-semibold text-ink">DATABASE_URL</th>
+                        <td class="border-b border-line px-3 py-3">
+                          <span class="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">different</span>
+                        </td>
+                        <td class="value-cell border-b border-line px-3 py-3" data-column-source="local-dev">
+                          <div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">postgres://app:sample@127.0.0.1:5432/dev_config</div>
+                          <div class="mt-2 flex gap-2">
+                            <button class="value-toggle text-xs font-medium text-blue-700">Expand</button>
+                            <button class="copy-value text-xs font-medium text-slate-600" data-copy="postgres://app:sample@127.0.0.1:5432/dev_config">Copy</button>
+                          </div>
+                        </td>
+                        <td class="value-cell border-b border-line px-3 py-3" data-column-source="local-prod">
+                          <div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">postgres://app:sample@127.0.0.1:5432/prod_config</div>
+                          <div class="mt-2 flex gap-2">
+                            <button class="value-toggle text-xs font-medium text-blue-700">Expand</button>
+                            <button class="copy-value text-xs font-medium text-slate-600" data-copy="postgres://app:sample@127.0.0.1:5432/prod_config">Copy</button>
+                          </div>
+                        </td>
+                        <td class="value-cell border-b border-line px-3 py-3" data-column-source="ssh-staging">
+                          <div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">postgres://app:sample@db.staging.example.invalid:5432/app</div>
+                          <div class="mt-2 flex gap-2">
+                            <button class="value-toggle text-xs font-medium text-blue-700">Expand</button>
+                            <button class="copy-value text-xs font-medium text-slate-600" data-copy="postgres://app:sample@db.staging.example.invalid:5432/app">Copy</button>
+                          </div>
+                        </td>
+                        <td class="value-cell border-b border-line px-3 py-3" data-column-source="ssh-production">
+                          <div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">postgres://app:sample@db.production.example.invalid:5432/app</div>
+                          <div class="mt-2 flex gap-2">
+                            <button class="value-toggle text-xs font-medium text-blue-700">Expand</button>
+                            <button class="copy-value text-xs font-medium text-slate-600" data-copy="postgres://app:sample@db.production.example.invalid:5432/app">Copy</button>
+                          </div>
+                        </td>
+                        <td class="border-b border-line px-3 py-3" data-column-source="ssh-canary">
+                          <span class="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700">source failed</span>
+                        </td>
+                        <td class="border-b border-line px-3 py-3">
+                          <button class="copy-row rounded-md border border-line p-2 text-slate-600 hover:bg-slate-50" data-key="DATABASE_URL" aria-label="Copy DATABASE_URL row">
+                            <i data-lucide="copy" class="h-4 w-4"></i>
+                          </button>
+                        </td>
+                      </tr>
+
+                      <tr class="matrix-row align-top" data-status="empty" data-text="stripe_webhook_secret empty whitespace">
+                        <th class="sticky left-0 z-10 border-b border-line bg-white px-4 py-3 font-mono text-xs font-semibold text-ink">STRIPE_WEBHOOK_SECRET</th>
+                        <td class="border-b border-line px-3 py-3">
+                          <span class="inline-flex items-center rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">empty</span>
+                        </td>
+                        <td class="value-cell border-b border-line px-3 py-3" data-column-source="local-dev">
+                          <div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">sample_webhook_dev</div>
+                          <div class="mt-2 flex gap-2"><button class="value-toggle text-xs font-medium text-blue-700">Expand</button><button class="copy-value text-xs font-medium text-slate-600" data-copy="sample_webhook_dev">Copy</button></div>
+                        </td>
+                        <td class="border-b border-line px-3 py-3" data-column-source="local-prod">
+                          <span class="rounded-md bg-red-50 px-2 py-1 font-mono text-xs text-red-700">empty string</span>
+                        </td>
+                        <td class="border-b border-line px-3 py-3" data-column-source="ssh-staging">
+                          <span class="rounded-md bg-red-50 px-2 py-1 font-mono text-xs text-red-700">whitespace-only</span>
+                        </td>
+                        <td class="value-cell border-b border-line px-3 py-3" data-column-source="ssh-production">
+                          <div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">sample_webhook_prod</div>
+                          <div class="mt-2 flex gap-2"><button class="value-toggle text-xs font-medium text-blue-700">Expand</button><button class="copy-value text-xs font-medium text-slate-600" data-copy="sample_webhook_prod">Copy</button></div>
+                        </td>
+                        <td class="border-b border-line px-3 py-3" data-column-source="ssh-canary"><span class="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700">source failed</span></td>
+                        <td class="border-b border-line px-3 py-3"><button class="copy-row rounded-md border border-line p-2 text-slate-600 hover:bg-slate-50" data-key="STRIPE_WEBHOOK_SECRET" aria-label="Copy STRIPE_WEBHOOK_SECRET row"><i data-lucide="copy" class="h-4 w-4"></i></button></td>
+                      </tr>
+
+                      <tr class="matrix-row align-top" data-status="missing" data-text="redis_url missing local prod ssh">
+                        <th class="sticky left-0 z-10 border-b border-line bg-white px-4 py-3 font-mono text-xs font-semibold text-ink">REDIS_URL</th>
+                        <td class="border-b border-line px-3 py-3">
+                          <span class="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">missing</span>
+                        </td>
+                        <td class="value-cell border-b border-line px-3 py-3" data-column-source="local-dev">
+                          <div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">redis://127.0.0.1:6379/0</div>
+                          <div class="mt-2 flex gap-2"><button class="value-toggle text-xs font-medium text-blue-700">Expand</button><button class="copy-value text-xs font-medium text-slate-600" data-copy="redis://127.0.0.1:6379/0">Copy</button></div>
+                        </td>
+                        <td class="border-b border-line px-3 py-3" data-column-source="local-prod"><span class="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">missing</span></td>
+                        <td class="value-cell border-b border-line px-3 py-3" data-column-source="ssh-staging">
+                          <div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">redis://cache.staging.example.invalid:6379/0</div>
+                          <div class="mt-2 flex gap-2"><button class="value-toggle text-xs font-medium text-blue-700">Expand</button><button class="copy-value text-xs font-medium text-slate-600" data-copy="redis://cache.staging.example.invalid:6379/0">Copy</button></div>
+                        </td>
+                        <td class="value-cell border-b border-line px-3 py-3" data-column-source="ssh-production">
+                          <div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">redis://cache.production.example.invalid:6379/0</div>
+                          <div class="mt-2 flex gap-2"><button class="value-toggle text-xs font-medium text-blue-700">Expand</button><button class="copy-value text-xs font-medium text-slate-600" data-copy="redis://cache.production.example.invalid:6379/0">Copy</button></div>
+                        </td>
+                        <td class="border-b border-line px-3 py-3" data-column-source="ssh-canary"><span class="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700">source failed</span></td>
+                        <td class="border-b border-line px-3 py-3"><button class="copy-row rounded-md border border-line p-2 text-slate-600 hover:bg-slate-50" data-key="REDIS_URL" aria-label="Copy REDIS_URL row"><i data-lucide="copy" class="h-4 w-4"></i></button></td>
+                      </tr>
+
+                      <tr class="matrix-row align-top" data-status="source-only" data-text="debug_toolbar_token source only dev">
+                        <th class="sticky left-0 z-10 border-b border-line bg-white px-4 py-3 font-mono text-xs font-semibold text-ink">DEBUG_TOOLBAR_TOKEN</th>
+                        <td class="border-b border-line px-3 py-3">
+                          <span class="inline-flex items-center rounded-full bg-purple-50 px-2.5 py-1 text-xs font-medium text-purple-700">source-only</span>
+                        </td>
+                        <td class="value-cell border-b border-line px-3 py-3" data-column-source="local-dev">
+                          <div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">sample_dev_only_token</div>
+                          <div class="mt-2 flex gap-2"><button class="value-toggle text-xs font-medium text-blue-700">Expand</button><button class="copy-value text-xs font-medium text-slate-600" data-copy="sample_dev_only_token">Copy</button></div>
+                        </td>
+                        <td class="border-b border-line px-3 py-3" data-column-source="local-prod"><span class="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">missing</span></td>
+                        <td class="border-b border-line px-3 py-3" data-column-source="ssh-staging"><span class="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">missing</span></td>
+                        <td class="border-b border-line px-3 py-3" data-column-source="ssh-production"><span class="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">missing</span></td>
+                        <td class="border-b border-line px-3 py-3" data-column-source="ssh-canary"><span class="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700">source failed</span></td>
+                        <td class="border-b border-line px-3 py-3"><button class="copy-row rounded-md border border-line p-2 text-slate-600 hover:bg-slate-50" data-key="DEBUG_TOOLBAR_TOKEN" aria-label="Copy DEBUG_TOOLBAR_TOKEN row"><i data-lucide="copy" class="h-4 w-4"></i></button></td>
+                      </tr>
+
+                      <tr class="matrix-row align-top" data-status="same" data-text="node_env production same">
+                        <th class="sticky left-0 z-10 border-b border-line bg-white px-4 py-3 font-mono text-xs font-semibold text-ink">NODE_ENV</th>
+                        <td class="border-b border-line px-3 py-3">
+                          <span class="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">same</span>
+                        </td>
+                        <td class="value-cell border-b border-line px-3 py-3" data-column-source="local-dev"><div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">production</div><div class="mt-2 flex gap-2"><button class="value-toggle text-xs font-medium text-blue-700">Expand</button><button class="copy-value text-xs font-medium text-slate-600" data-copy="production">Copy</button></div></td>
+                        <td class="value-cell border-b border-line px-3 py-3" data-column-source="local-prod"><div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">production</div><div class="mt-2 flex gap-2"><button class="value-toggle text-xs font-medium text-blue-700">Expand</button><button class="copy-value text-xs font-medium text-slate-600" data-copy="production">Copy</button></div></td>
+                        <td class="value-cell border-b border-line px-3 py-3" data-column-source="ssh-staging"><div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">production</div><div class="mt-2 flex gap-2"><button class="value-toggle text-xs font-medium text-blue-700">Expand</button><button class="copy-value text-xs font-medium text-slate-600" data-copy="production">Copy</button></div></td>
+                        <td class="value-cell border-b border-line px-3 py-3" data-column-source="ssh-production"><div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">production</div><div class="mt-2 flex gap-2"><button class="value-toggle text-xs font-medium text-blue-700">Expand</button><button class="copy-value text-xs font-medium text-slate-600" data-copy="production">Copy</button></div></td>
+                        <td class="border-b border-line px-3 py-3" data-column-source="ssh-canary"><span class="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700">source failed</span></td>
+                        <td class="border-b border-line px-3 py-3"><button class="copy-row rounded-md border border-line p-2 text-slate-600 hover:bg-slate-50" data-key="NODE_ENV" aria-label="Copy NODE_ENV row"><i data-lucide="copy" class="h-4 w-4"></i></button></td>
+                      </tr>
+
+                      <tr class="matrix-row align-top" data-status="different" data-text="jwt_public_key long value multiline">
+                        <th class="sticky left-0 z-10 border-b border-line bg-white px-4 py-3 font-mono text-xs font-semibold text-ink">JWT_PUBLIC_KEY</th>
+                        <td class="border-b border-line px-3 py-3">
+                          <span class="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">different</span>
+                        </td>
+                        <td class="value-cell border-b border-line px-3 py-3" data-column-source="local-dev">
+                          <div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A_SAMPLE_DEV_PUBLIC_KEY_WITH_LONG_WRAPPED_CONTENT\n-----END PUBLIC KEY-----</div>
+                          <div class="mt-2 flex gap-2"><button class="value-toggle text-xs font-medium text-blue-700">Expand</button><button class="copy-value text-xs font-medium text-slate-600" data-copy="sample long public key dev">Copy</button></div>
+                        </td>
+                        <td class="value-cell border-b border-line px-3 py-3" data-column-source="local-prod">
+                          <div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A_SAMPLE_PROD_PUBLIC_KEY_WITH_LONG_WRAPPED_CONTENT\n-----END PUBLIC KEY-----</div>
+                          <div class="mt-2 flex gap-2"><button class="value-toggle text-xs font-medium text-blue-700">Expand</button><button class="copy-value text-xs font-medium text-slate-600" data-copy="sample long public key prod">Copy</button></div>
+                        </td>
+                        <td class="value-cell border-b border-line px-3 py-3" data-column-source="ssh-staging">
+                          <div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A_SAMPLE_STAGING_PUBLIC_KEY_WITH_LONG_WRAPPED_CONTENT\n-----END PUBLIC KEY-----</div>
+                          <div class="mt-2 flex gap-2"><button class="value-toggle text-xs font-medium text-blue-700">Expand</button><button class="copy-value text-xs font-medium text-slate-600" data-copy="sample long public key staging">Copy</button></div>
+                        </td>
+                        <td class="value-cell border-b border-line px-3 py-3" data-column-source="ssh-production">
+                          <div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A_SAMPLE_PRODUCTION_PUBLIC_KEY_WITH_LONG_WRAPPED_CONTENT\n-----END PUBLIC KEY-----</div>
+                          <div class="mt-2 flex gap-2"><button class="value-toggle text-xs font-medium text-blue-700">Expand</button><button class="copy-value text-xs font-medium text-slate-600" data-copy="sample long public key production">Copy</button></div>
+                        </td>
+                        <td class="border-b border-line px-3 py-3" data-column-source="ssh-canary"><span class="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700">source failed</span></td>
+                        <td class="border-b border-line px-3 py-3"><button class="copy-row rounded-md border border-line p-2 text-slate-600 hover:bg-slate-50" data-key="JWT_PUBLIC_KEY" aria-label="Copy JWT_PUBLIC_KEY row"><i data-lucide="copy" class="h-4 w-4"></i></button></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="flex flex-col gap-2 border-t border-line bg-field px-4 py-3 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+                  <span>Showing 6 sample rows from 148 keys. Large key sets use paginated or virtualized rendering in implementation.</span>
+                  <div class="flex items-center gap-2">
+                    <button class="rounded-md border border-line bg-white px-2.5 py-1.5 font-medium text-slate-600">Previous</button>
+                    <span class="font-mono">1 / 15</span>
+                    <button class="rounded-md border border-line bg-white px-2.5 py-1.5 font-medium text-slate-600">Next</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <aside class="space-y-4">
+              <div class="rounded-lg border border-line bg-panel p-4">
+                <div class="flex items-center justify-between gap-3">
+                  <h3 class="text-sm font-semibold">Source results</h3>
+                  <span class="text-xs text-slate-500">Last read 10:42</span>
+                </div>
+                <div class="mt-3 space-y-2">
+                  <div class="rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                    <div class="flex items-center justify-between gap-3 text-sm font-medium text-emerald-900">
+                      <span>local-dev</span>
+                      <span>38 keys</span>
+                    </div>
+                    <p class="mt-1 text-xs text-emerald-700">local-file read succeeded</p>
+                  </div>
+                  <div class="rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                    <div class="flex items-center justify-between gap-3 text-sm font-medium text-emerald-900">
+                      <span>ssh-production</span>
+                      <span>141 keys</span>
+                    </div>
+                    <p class="mt-1 text-xs text-emerald-700">known_hosts verified</p>
+                  </div>
+                  <div class="rounded-md border border-red-200 bg-red-50 p-3">
+                    <div class="flex items-center justify-between gap-3 text-sm font-medium text-red-900">
+                      <span>ssh-canary</span>
+                      <span>failed</span>
+                    </div>
+                    <p class="mt-1 text-xs text-red-700">auth_failed: private key was rejected. No env content returned.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="rounded-lg border border-line bg-panel p-4">
+                <h3 class="text-sm font-semibold">Classification precedence</h3>
+                <ol class="mt-3 space-y-2 text-xs text-slate-600">
+                  <li class="flex gap-2"><span class="font-mono text-slate-400">1</span> Failed and parse-failed sources are excluded from row status.</li>
+                  <li class="flex gap-2"><span class="font-mono text-red-600">2</span> Empty or whitespace-only values win first.</li>
+                  <li class="flex gap-2"><span class="font-mono text-purple-600">3</span> Source-only is next.</li>
+                  <li class="flex gap-2"><span class="font-mono text-amber-600">4</span> Missing is next.</li>
+                  <li class="flex gap-2"><span class="font-mono text-emerald-600">5</span> Same comes before different.</li>
+                </ol>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section id="health" class="app-view px-4 py-5 lg:px-6">
+          <div class="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+            <aside class="space-y-4">
+              <div class="rounded-lg border border-line bg-panel p-4">
+                <label for="health-source" class="text-sm font-semibold">Source</label>
+                <select id="health-source" class="mt-2 h-10 w-full rounded-md border border-line bg-white px-3 text-sm">
+                  <option>ssh-production</option>
+                  <option>local-prod</option>
+                  <option>local-dev</option>
+                  <option>ssh-staging</option>
+                </select>
+                <button class="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800">
+                  <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+                  Read source
+                </button>
+              </div>
+
+              <div class="rounded-lg border border-line bg-panel p-4">
+                <h3 class="text-sm font-semibold">Issue summary</h3>
+                <div class="mt-3 grid grid-cols-2 gap-2">
+                  <button class="issue-chip rounded-md border border-line bg-white p-3 text-left" data-issue="duplicate" data-active="true">
+                    <span class="block text-lg font-semibold">2</span>
+                    <span class="text-xs text-slate-500">Duplicate</span>
+                  </button>
+                  <button class="issue-chip rounded-md border border-line bg-white p-3 text-left" data-issue="parse_failure" data-active="true">
+                    <span class="block text-lg font-semibold">1</span>
+                    <span class="text-xs text-slate-500">Parse failure</span>
+                  </button>
+                  <button class="issue-chip rounded-md border border-line bg-white p-3 text-left" data-issue="empty" data-active="true">
+                    <span class="block text-lg font-semibold">3</span>
+                    <span class="text-xs text-slate-500">Empty</span>
+                  </button>
+                  <button class="issue-chip rounded-md border border-line bg-white p-3 text-left" data-issue="illegal" data-active="true">
+                    <span class="block text-lg font-semibold">2</span>
+                    <span class="text-xs text-slate-500">Invalid key</span>
+                  </button>
+                </div>
+                <button id="health-all" class="mt-3 w-full rounded-md border border-line bg-white px-3 py-2 text-sm font-medium text-slate-700">Show all issue types</button>
+              </div>
+            </aside>
+
+            <div class="min-w-0 space-y-4">
+              <div class="rounded-lg border border-line bg-panel p-4 shadow-soft">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <h3 class="text-base font-semibold">ssh-production health</h3>
+                    <p class="mt-1 text-sm text-slate-600">Complete values are visible in key/value rows. Errors are summarized without dumping full source content.</p>
+                  </div>
+                  <div class="grid grid-cols-3 gap-2 text-center text-xs">
+                    <div class="rounded-md border border-line bg-field px-3 py-2">
+                      <span class="block text-base font-semibold">141</span>
+                      <span class="text-slate-500">keys</span>
+                    </div>
+                    <div class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
+                      <span class="block text-base font-semibold text-red-800">8</span>
+                      <span class="text-red-700">issues</span>
+                    </div>
+                    <div class="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2">
+                      <span class="block text-base font-semibold text-emerald-800">live</span>
+                      <span class="text-emerald-700">read</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="rounded-lg border border-line bg-panel p-4">
+                <label class="relative block">
+                  <i data-lucide="search" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"></i>
+                  <input id="health-search" class="h-10 w-full rounded-md border border-line bg-white pl-9 pr-3 text-sm" placeholder="Search keys or values in this source" />
+                </label>
+              </div>
+
+              <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+                <div class="overflow-hidden rounded-lg border border-line bg-panel">
+                  <div class="border-b border-line bg-field px-4 py-3">
+                    <h3 class="text-sm font-semibold">Key/value facts</h3>
+                  </div>
+                  <div class="overflow-x-auto">
+                    <table class="min-w-[720px] text-left text-sm">
+                      <thead class="bg-white text-xs uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th class="w-56 border-b border-line px-4 py-3">Key</th>
+                          <th class="border-b border-line px-3 py-3">Value</th>
+                          <th class="w-24 border-b border-line px-3 py-3">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr class="health-row" data-text="DATABASE_URL postgres production">
+                          <th class="border-b border-line px-4 py-3 font-mono text-xs">DATABASE_URL</th>
+                          <td class="value-cell border-b border-line px-3 py-3"><div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">postgres://app:sample@db.production.example.invalid:5432/app</div><div class="mt-2 flex gap-2"><button class="value-toggle text-xs font-medium text-blue-700">Expand</button><button class="copy-value text-xs font-medium text-slate-600" data-copy="postgres://app:sample@db.production.example.invalid:5432/app">Copy</button></div></td>
+                          <td class="border-b border-line px-3 py-3"><button class="copy-value rounded-md border border-line p-2 text-slate-600" data-copy="postgres://app:sample@db.production.example.invalid:5432/app" aria-label="Copy DATABASE_URL"><i data-lucide="copy" class="h-4 w-4"></i></button></td>
+                        </tr>
+                        <tr class="health-row" data-text="APP_ORIGIN https production">
+                          <th class="border-b border-line px-4 py-3 font-mono text-xs">APP_ORIGIN</th>
+                          <td class="value-cell border-b border-line px-3 py-3"><div class="value-preview break-all rounded-md bg-slate-50 p-2 font-mono text-xs">https://app.example.invalid</div><div class="mt-2 flex gap-2"><button class="value-toggle text-xs font-medium text-blue-700">Expand</button><button class="copy-value text-xs font-medium text-slate-600" data-copy="https://app.example.invalid">Copy</button></div></td>
+                          <td class="border-b border-line px-3 py-3"><button class="copy-value rounded-md border border-line p-2 text-slate-600" data-copy="https://app.example.invalid" aria-label="Copy APP_ORIGIN"><i data-lucide="copy" class="h-4 w-4"></i></button></td>
+                        </tr>
+                        <tr class="health-row" data-text="STRIPE_WEBHOOK_SECRET empty">
+                          <th class="border-b border-line px-4 py-3 font-mono text-xs">STRIPE_WEBHOOK_SECRET</th>
+                          <td class="border-b border-line px-3 py-3"><span class="rounded-md bg-red-50 px-2 py-1 font-mono text-xs text-red-700">empty string</span></td>
+                          <td class="border-b border-line px-3 py-3"><button class="copy-value rounded-md border border-line p-2 text-slate-600" data-copy="" aria-label="Copy STRIPE_WEBHOOK_SECRET"><i data-lucide="copy" class="h-4 w-4"></i></button></td>
+                        </tr>
+                        <tr class="health-row" data-text="FEATURE_GATE whitespace only">
+                          <th class="border-b border-line px-4 py-3 font-mono text-xs">FEATURE_GATE</th>
+                          <td class="border-b border-line px-3 py-3"><span class="rounded-md bg-red-50 px-2 py-1 font-mono text-xs text-red-700">whitespace-only value</span></td>
+                          <td class="border-b border-line px-3 py-3"><button class="copy-value rounded-md border border-line p-2 text-slate-600" data-copy="   " aria-label="Copy FEATURE_GATE"><i data-lucide="copy" class="h-4 w-4"></i></button></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div class="overflow-hidden rounded-lg border border-line bg-panel">
+                  <div class="border-b border-line bg-field px-4 py-3">
+                    <h3 class="text-sm font-semibold">Issue details</h3>
+                  </div>
+                  <div class="divide-y divide-line">
+                    <div class="issue-row p-4" data-issue-type="duplicate">
+                      <div class="flex items-start justify-between gap-3">
+                        <div>
+                          <span class="rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">duplicate key</span>
+                          <p class="mt-2 font-mono text-xs font-semibold">DATABASE_URL</p>
+                        </div>
+                        <span class="text-xs text-slate-500">count 3</span>
+                      </div>
+                      <p class="mt-2 text-xs text-slate-600">Last assignment wins. Final effective value is displayed in the key/value table.</p>
+                    </div>
+                    <div class="issue-row p-4" data-issue-type="parse_failure">
+                      <span class="rounded-full bg-red-50 px-2 py-1 text-xs font-medium text-red-700">parse failure</span>
+                      <p class="mt-2 text-xs text-slate-600">Invalid quoted assignment near a single line. Full file content is not returned.</p>
+                    </div>
+                    <div class="issue-row p-4" data-issue-type="empty">
+                      <span class="rounded-full bg-red-50 px-2 py-1 text-xs font-medium text-red-700">empty value</span>
+                      <p class="mt-2 font-mono text-xs font-semibold">STRIPE_WEBHOOK_SECRET</p>
+                    </div>
+                    <div class="issue-row p-4" data-issue-type="empty">
+                      <span class="rounded-full bg-red-50 px-2 py-1 text-xs font-medium text-red-700">whitespace-only value</span>
+                      <p class="mt-2 font-mono text-xs font-semibold">FEATURE_GATE</p>
+                    </div>
+                    <div class="issue-row p-4" data-issue-type="illegal">
+                      <span class="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">empty key</span>
+                      <p class="mt-2 text-xs text-slate-600">An assignment contains no key before <span class="font-mono">=</span>.</p>
+                    </div>
+                    <div class="issue-row p-4" data-issue-type="illegal">
+                      <span class="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">illegal key name</span>
+                      <p class="mt-2 font-mono text-xs font-semibold">1INVALID_KEY</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="settings" class="app-view px-4 py-5 lg:px-6">
+          <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+            <div class="min-w-0 space-y-4">
+              <div class="rounded-lg border border-line bg-panel p-4 shadow-soft">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <h3 class="text-base font-semibold">Env sources</h3>
+                    <p class="mt-1 text-sm text-slate-600">Settings persist locally. Env contents, parsed maps, comparisons, and remote read output are not persisted.</p>
+                  </div>
+                  <div class="flex flex-wrap gap-2">
+                    <button class="inline-flex items-center gap-2 rounded-md border border-line bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50" data-open-modal="local">
+                      <i data-lucide="file-plus-2" class="h-4 w-4"></i>
+                      Local source
+                    </button>
+                    <button class="inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-medium text-white hover:bg-slate-800" data-open-modal="ssh">
+                      <i data-lucide="server" class="h-4 w-4"></i>
+                      SSH source
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="overflow-hidden rounded-lg border border-line bg-panel">
+                <div class="overflow-x-auto">
+                  <table class="min-w-[920px] text-left text-sm">
+                    <thead class="bg-field text-xs uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th class="w-12 border-b border-line px-4 py-3">Order</th>
+                        <th class="w-52 border-b border-line px-3 py-3">Source</th>
+                        <th class="w-28 border-b border-line px-3 py-3">Type</th>
+                        <th class="border-b border-line px-3 py-3">Read target</th>
+                        <th class="w-28 border-b border-line px-3 py-3">State</th>
+                        <th class="w-44 border-b border-line px-3 py-3">Test</th>
+                        <th class="w-40 border-b border-line px-3 py-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr class="source-row">
+                        <td class="border-b border-line px-4 py-3"><div class="flex gap-1"><button class="rounded border border-line p-1" aria-label="Move local-dev up"><i data-lucide="chevron-up" class="h-3.5 w-3.5"></i></button><button class="rounded border border-line p-1" aria-label="Move local-dev down"><i data-lucide="chevron-down" class="h-3.5 w-3.5"></i></button></div></td>
+                        <td class="border-b border-line px-3 py-3"><p class="font-semibold">local-dev</p><p class="text-xs text-slate-500">Developer machine file</p></td>
+                        <td class="border-b border-line px-3 py-3"><span class="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">local-file</span></td>
+                        <td class="border-b border-line px-3 py-3 font-mono text-xs">/Users/example/project/.env.local</td>
+                        <td class="border-b border-line px-3 py-3"><label class="inline-flex items-center gap-2 text-xs"><input type="checkbox" checked class="h-4 w-4 rounded border-line" /> Enabled</label></td>
+                        <td class="border-b border-line px-3 py-3"><button class="test-source rounded-md border border-line bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700" data-result="success">Test readability</button></td>
+                        <td class="border-b border-line px-3 py-3"><div class="flex gap-2"><button class="rounded-md border border-line p-2 text-slate-600" aria-label="Edit local-dev"><i data-lucide="pencil" class="h-4 w-4"></i></button><button class="rounded-md border border-red-200 p-2 text-red-700" aria-label="Delete local-dev"><i data-lucide="trash-2" class="h-4 w-4"></i></button></div></td>
+                      </tr>
+                      <tr class="source-row">
+                        <td class="border-b border-line px-4 py-3"><div class="flex gap-1"><button class="rounded border border-line p-1" aria-label="Move ssh-staging up"><i data-lucide="chevron-up" class="h-3.5 w-3.5"></i></button><button class="rounded border border-line p-1" aria-label="Move ssh-staging down"><i data-lucide="chevron-down" class="h-3.5 w-3.5"></i></button></div></td>
+                        <td class="border-b border-line px-3 py-3"><p class="font-semibold">ssh-staging</p><p class="text-xs text-slate-500">Standard field mode</p></td>
+                        <td class="border-b border-line px-3 py-3"><span class="rounded-full bg-teal-50 px-2 py-1 text-xs font-medium text-teal-700">ssh-remote</span></td>
+                        <td class="border-b border-line px-3 py-3"><p class="font-mono text-xs">deploy@example.invalid:/srv/app/.env</p><p class="mt-1 font-mono text-xs text-slate-500">key path: ~/.ssh/id_env_config_lens</p></td>
+                        <td class="border-b border-line px-3 py-3"><label class="inline-flex items-center gap-2 text-xs"><input type="checkbox" checked class="h-4 w-4 rounded border-line" /> Enabled</label></td>
+                        <td class="border-b border-line px-3 py-3"><button class="test-source rounded-md border border-line bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700" data-result="success">Test connection</button></td>
+                        <td class="border-b border-line px-3 py-3"><div class="flex gap-2"><button class="rounded-md border border-line p-2 text-slate-600" aria-label="Edit ssh-staging"><i data-lucide="pencil" class="h-4 w-4"></i></button><button class="rounded-md border border-red-200 p-2 text-red-700" aria-label="Delete ssh-staging"><i data-lucide="trash-2" class="h-4 w-4"></i></button></div></td>
+                      </tr>
+                      <tr class="source-row">
+                        <td class="border-b border-line px-4 py-3"><div class="flex gap-1"><button class="rounded border border-line p-1" aria-label="Move ssh-production up"><i data-lucide="chevron-up" class="h-3.5 w-3.5"></i></button><button class="rounded border border-line p-1" aria-label="Move ssh-production down"><i data-lucide="chevron-down" class="h-3.5 w-3.5"></i></button></div></td>
+                        <td class="border-b border-line px-3 py-3"><p class="font-semibold">ssh-production</p><p class="text-xs text-slate-500">SSH config alias mode</p></td>
+                        <td class="border-b border-line px-3 py-3"><span class="rounded-full bg-teal-50 px-2 py-1 text-xs font-medium text-teal-700">ssh-remote</span></td>
+                        <td class="border-b border-line px-3 py-3"><p class="font-mono text-xs">prod-env-alias:/srv/app/.env</p><p class="mt-1 font-mono text-xs text-slate-500">passphrase: keychain:ecl-prod</p></td>
+                        <td class="border-b border-line px-3 py-3"><label class="inline-flex items-center gap-2 text-xs"><input type="checkbox" checked class="h-4 w-4 rounded border-line" /> Enabled</label></td>
+                        <td class="border-b border-line px-3 py-3"><button class="test-source rounded-md border border-line bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700" data-result="success">Test connection</button></td>
+                        <td class="border-b border-line px-3 py-3"><div class="flex gap-2"><button class="rounded-md border border-line p-2 text-slate-600" aria-label="Edit ssh-production"><i data-lucide="pencil" class="h-4 w-4"></i></button><button class="rounded-md border border-red-200 p-2 text-red-700" aria-label="Delete ssh-production"><i data-lucide="trash-2" class="h-4 w-4"></i></button></div></td>
+                      </tr>
+                      <tr class="source-row bg-slate-50">
+                        <td class="border-b border-line px-4 py-3"><div class="flex gap-1"><button class="rounded border border-line p-1" aria-label="Move ssh-canary up"><i data-lucide="chevron-up" class="h-3.5 w-3.5"></i></button><button class="rounded border border-line p-1" aria-label="Move ssh-canary down"><i data-lucide="chevron-down" class="h-3.5 w-3.5"></i></button></div></td>
+                        <td class="border-b border-line px-3 py-3"><p class="font-semibold">ssh-canary</p><p class="text-xs text-slate-500">Disabled until auth fixed</p></td>
+                        <td class="border-b border-line px-3 py-3"><span class="rounded-full bg-teal-50 px-2 py-1 text-xs font-medium text-teal-700">ssh-remote</span></td>
+                        <td class="border-b border-line px-3 py-3 font-mono text-xs">canary-env-alias:/srv/app/.env</td>
+                        <td class="border-b border-line px-3 py-3"><label class="inline-flex items-center gap-2 text-xs"><input type="checkbox" class="h-4 w-4 rounded border-line" /> Enabled</label></td>
+                        <td class="border-b border-line px-3 py-3"><button class="test-source rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700" data-result="auth_failed">auth_failed</button></td>
+                        <td class="border-b border-line px-3 py-3"><div class="flex gap-2"><button class="rounded-md border border-line p-2 text-slate-600" aria-label="Edit ssh-canary"><i data-lucide="pencil" class="h-4 w-4"></i></button><button class="rounded-md border border-red-200 p-2 text-red-700" aria-label="Delete ssh-canary"><i data-lucide="trash-2" class="h-4 w-4"></i></button></div></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <aside class="space-y-4">
+              <div class="rounded-lg border border-line bg-panel p-4">
+                <h3 class="text-sm font-semibold">Storage model</h3>
+                <div class="mt-3 space-y-3">
+                  <div class="rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                    <p class="text-sm font-medium text-emerald-900">Persisted</p>
+                    <p class="mt-1 text-xs text-emerald-700">source names, enabled state, display order, file paths, SSH metadata, Keychain references, notes</p>
+                  </div>
+                  <div class="rounded-md border border-red-200 bg-red-50 p-3">
+                    <p class="text-sm font-medium text-red-900">Not persisted</p>
+                    <p class="mt-1 text-xs text-red-700">env contents, env values, parsed maps, remote read output, comparison results, passphrases, private key contents</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="rounded-lg border border-line bg-panel p-4">
+                <h3 class="text-sm font-semibold">Release gates</h3>
+                <div class="mt-3 space-y-2 text-sm">
+                  <div class="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"><span>127.0.0.1 binding</span><span class="text-ok">pass</span></div>
+                  <div class="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"><span>Startup token</span><span class="text-ok">pass</span></div>
+                  <div class="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"><span>Local-origin CORS</span><span class="text-ok">pass</span></div>
+                  <div class="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"><span>known_hosts verification</span><span class="text-ok">pass</span></div>
+                  <div class="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"><span>No-leak sentinel</span><span class="text-risk">pending run</span></div>
+                </div>
+              </div>
+
+              <div class="rounded-lg border border-line bg-panel p-4">
+                <h3 class="text-sm font-semibold">Sanitized SSH failures</h3>
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">connection_failed</span>
+                  <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">auth_failed</span>
+                  <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">permission_denied</span>
+                  <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">path_not_found</span>
+                  <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">parse_failed</span>
+                  <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">unknown_error</span>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="modal" class="modal fixed inset-0 z-50 items-center justify-center bg-slate-950/40 p-4">
+      <div class="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-lg bg-white shadow-soft">
+        <div class="flex items-center justify-between gap-4 border-b border-line px-5 py-4">
+          <div>
+            <p id="modal-eyebrow" class="text-xs font-semibold uppercase tracking-wide text-slate-500">Source settings</p>
+            <h3 id="modal-title" class="text-lg font-semibold">Add source</h3>
+          </div>
+          <button id="modal-close" class="rounded-md border border-line p-2 text-slate-600 hover:bg-slate-50" aria-label="Close dialog">
+            <i data-lucide="x" class="h-4 w-4"></i>
+          </button>
+        </div>
+
+        <form class="space-y-5 p-5">
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="block">
+              <span class="text-sm font-medium">Source name</span>
+              <input class="mt-1 h-10 w-full rounded-md border border-line px-3 text-sm" value="ssh-review" />
+            </label>
+            <label class="block">
+              <span class="text-sm font-medium">Enabled state</span>
+              <select class="mt-1 h-10 w-full rounded-md border border-line px-3 text-sm">
+                <option>Enabled</option>
+                <option>Disabled</option>
+              </select>
+            </label>
+          </div>
+
+          <div id="local-fields" class="space-y-4">
+            <label class="block">
+              <span class="text-sm font-medium">Local env file path</span>
+              <div class="mt-1 flex flex-col gap-2 sm:flex-row">
+                <input class="h-10 min-w-0 flex-1 rounded-md border border-line px-3 font-mono text-sm" value="/Users/example/project/.env.review" />
+                <button type="button" class="inline-flex items-center justify-center gap-2 rounded-md border border-line px-3 py-2 text-sm font-medium text-slate-700">
+                  <i data-lucide="folder-open" class="h-4 w-4"></i>
+                  Open picker
+                </button>
+              </div>
+              <p class="mt-1 text-xs text-slate-500">The local service opens the macOS file picker and persists only this path.</p>
+            </label>
+          </div>
+
+          <div id="ssh-fields" class="space-y-4">
+            <div>
+              <span class="text-sm font-medium">SSH mode</span>
+              <div class="mt-2 grid gap-2 sm:grid-cols-2">
+                <label class="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm">
+                  <input type="radio" name="ssh-mode" checked class="mr-2" />
+                  Standard fields
+                </label>
+                <label class="rounded-md border border-line p-3 text-sm">
+                  <input type="radio" name="ssh-mode" class="mr-2" />
+                  SSH config alias
+                </label>
+              </div>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_120px]">
+              <label class="block">
+                <span class="text-sm font-medium">Host</span>
+                <input class="mt-1 h-10 w-full rounded-md border border-line px-3 font-mono text-sm" value="example.invalid" />
+              </label>
+              <label class="block">
+                <span class="text-sm font-medium">Port</span>
+                <input class="mt-1 h-10 w-full rounded-md border border-line px-3 font-mono text-sm" value="22" />
+              </label>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2">
+              <label class="block">
+                <span class="text-sm font-medium">Username</span>
+                <input class="mt-1 h-10 w-full rounded-md border border-line px-3 font-mono text-sm" value="deploy" />
+              </label>
+              <label class="block">
+                <span class="text-sm font-medium">SSH alias</span>
+                <input class="mt-1 h-10 w-full rounded-md border border-line px-3 font-mono text-sm" value="prod-env-alias" />
+              </label>
+            </div>
+
+            <label class="block">
+              <span class="text-sm font-medium">Private key path</span>
+              <div class="mt-1 flex flex-col gap-2 sm:flex-row">
+                <input class="h-10 min-w-0 flex-1 rounded-md border border-line px-3 font-mono text-sm" value="/Users/example/.ssh/id_env_config_lens" />
+                <button type="button" class="inline-flex items-center justify-center gap-2 rounded-md border border-line px-3 py-2 text-sm font-medium text-slate-700">
+                  <i data-lucide="folder-key" class="h-4 w-4"></i>
+                  Pick key
+                </button>
+              </div>
+              <p class="mt-1 text-xs text-slate-500">The private key file is referenced by path. Key contents are not copied into SQLite.</p>
+            </label>
+
+            <div class="grid gap-4 md:grid-cols-2">
+              <label class="block">
+                <span class="text-sm font-medium">Remote env file path</span>
+                <input class="mt-1 h-10 w-full rounded-md border border-line px-3 font-mono text-sm" value="/srv/app/.env" />
+              </label>
+              <label class="block">
+                <span class="text-sm font-medium">Keychain passphrase reference</span>
+                <input class="mt-1 h-10 w-full rounded-md border border-line px-3 font-mono text-sm" value="keychain:ecl-prod" />
+              </label>
+            </div>
+          </div>
+
+          <label class="block">
+            <span class="text-sm font-medium">Note</span>
+            <textarea class="mt-1 min-h-20 w-full rounded-md border border-line px-3 py-2 text-sm">Used for release comparison reviews.</textarea>
+          </label>
+
+          <div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            Source tests return success or sanitized failure only. They do not return env file contents.
+          </div>
+
+          <div class="flex flex-col-reverse gap-2 border-t border-line pt-4 sm:flex-row sm:justify-end">
+            <button type="button" id="modal-cancel" class="rounded-md border border-line bg-white px-4 py-2 text-sm font-medium text-slate-700">Cancel</button>
+            <button type="button" class="rounded-md border border-line bg-white px-4 py-2 text-sm font-medium text-slate-700">Test source</button>
+            <button type="button" class="rounded-md bg-ink px-4 py-2 text-sm font-medium text-white">Save source</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="toast" class="toast fixed bottom-4 left-4 right-4 z-50 rounded-md border border-slate-800 bg-ink px-4 py-3 text-sm font-medium text-white shadow-soft sm:left-auto sm:w-80">
+      Copied
+    </div>
+
+    <script>
+      const titles = {
+        comparison: "Multi-environment comparison",
+        health: "Single-source health governance",
+        settings: "Settings"
+      };
+
+      const navButtons = document.querySelectorAll("[data-view-target]");
+      const views = document.querySelectorAll(".app-view");
+      const title = document.querySelector("#view-title");
+
+      navButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          const target = button.dataset.viewTarget;
+          views.forEach((view) => view.classList.toggle("is-active", view.id === target));
+          navButtons.forEach((nav) => nav.removeAttribute("aria-current"));
+          button.setAttribute("aria-current", "page");
+          title.textContent = titles[target];
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        });
+      });
+
+      const toast = document.querySelector("#toast");
+      let toastTimer;
+      function showToast(message) {
+        toast.textContent = message;
+        toast.classList.add("is-visible");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove("is-visible"), 1800);
+      }
+
+      async function copyText(text, message) {
+        try {
+          await navigator.clipboard.writeText(text);
+          showToast(message);
+        } catch {
+          showToast("Copy unavailable in this browser context");
+        }
+      }
+
+      document.addEventListener("click", (event) => {
+        const toggle = event.target.closest(".value-toggle");
+        if (toggle) {
+          const cell = toggle.closest(".value-cell");
+          cell.classList.toggle("is-expanded");
+          toggle.textContent = cell.classList.contains("is-expanded") ? "Collapse" : "Expand";
+        }
+
+        const copyValue = event.target.closest(".copy-value");
+        if (copyValue) {
+          copyText(copyValue.dataset.copy || "", "Single value copied");
+        }
+
+        const copyRow = event.target.closest(".copy-row,[data-action='copy-row']");
+        if (copyRow) {
+          const key = copyRow.dataset.key || "selected key";
+          copyText(key + " comparison row", "One-key comparison copied");
+        }
+
+        const sourceTest = event.target.closest(".test-source");
+        if (sourceTest) {
+          const result = sourceTest.dataset.result;
+          if (result === "success") {
+            showToast("Source test succeeded without returning env content");
+          } else {
+            showToast("Sanitized failure: " + result);
+          }
+        }
+      });
+
+      const compareSearch = document.querySelector("#compare-search");
+      const statusChips = document.querySelectorAll(".chip");
+      let activeStatus = "problem";
+
+      function applyCompareFilters() {
+        const query = compareSearch.value.trim().toLowerCase();
+        const problemStatuses = new Set(["different", "missing", "empty", "source-only"]);
+        document.querySelectorAll(".matrix-row").forEach((row) => {
+          const rowStatus = row.dataset.status;
+          const textMatch = !query || row.dataset.text.toLowerCase().includes(query);
+          const statusMatch =
+            activeStatus === "all" ||
+            rowStatus === activeStatus ||
+            (activeStatus === "problem" && problemStatuses.has(rowStatus));
+          row.classList.toggle("is-hidden", !(textMatch && statusMatch));
+        });
+      }
+
+      statusChips.forEach((chip) => {
+        chip.addEventListener("click", () => {
+          activeStatus = chip.dataset.status;
+          statusChips.forEach((item) => (item.dataset.active = "false"));
+          chip.dataset.active = "true";
+          applyCompareFilters();
+        });
+      });
+
+      compareSearch.addEventListener("input", applyCompareFilters);
+      applyCompareFilters();
+
+      const sourceChips = document.querySelectorAll(".source-chip");
+      sourceChips.forEach((chip) => {
+        chip.addEventListener("click", () => {
+          const source = chip.dataset.source;
+          const active = chip.dataset.active !== "true";
+          chip.dataset.active = String(active);
+          document.querySelectorAll(`[data-column-source="${source}"]`).forEach((cell) => {
+            cell.classList.toggle("hidden", !active);
+          });
+        });
+      });
+
+      const healthSearch = document.querySelector("#health-search");
+      healthSearch.addEventListener("input", () => {
+        const query = healthSearch.value.trim().toLowerCase();
+        document.querySelectorAll(".health-row").forEach((row) => {
+          row.classList.toggle("is-hidden", query && !row.dataset.text.toLowerCase().includes(query));
+        });
+      });
+
+      const issueChips = document.querySelectorAll(".issue-chip");
+      function applyIssueFilters() {
+        const activeIssues = new Set(
+          Array.from(issueChips)
+            .filter((chip) => chip.dataset.active === "true")
+            .map((chip) => chip.dataset.issue)
+        );
+        document.querySelectorAll(".issue-row").forEach((row) => {
+          row.classList.toggle("is-hidden", !activeIssues.has(row.dataset.issueType));
+        });
+      }
+
+      issueChips.forEach((chip) => {
+        chip.addEventListener("click", () => {
+          chip.dataset.active = chip.dataset.active === "true" ? "false" : "true";
+          applyIssueFilters();
+        });
+      });
+
+      document.querySelector("#health-all").addEventListener("click", () => {
+        issueChips.forEach((chip) => (chip.dataset.active = "true"));
+        applyIssueFilters();
+      });
+
+      const modal = document.querySelector("#modal");
+      const modalTitle = document.querySelector("#modal-title");
+      const modalEyebrow = document.querySelector("#modal-eyebrow");
+      const localFields = document.querySelector("#local-fields");
+      const sshFields = document.querySelector("#ssh-fields");
+
+      function openModal(type) {
+        modal.classList.add("is-open");
+        const isLocal = type === "local";
+        modalTitle.textContent = isLocal ? "Add local file source" : "Add SSH remote source";
+        modalEyebrow.textContent = isLocal ? "M1 local source" : "M2 SSH source";
+        localFields.classList.toggle("hidden", !isLocal);
+        sshFields.classList.toggle("hidden", isLocal);
+      }
+
+      document.querySelectorAll("[data-open-modal]").forEach((button) => {
+        button.addEventListener("click", () => openModal(button.dataset.openModal));
+      });
+
+      function closeModal() {
+        modal.classList.remove("is-open");
+      }
+
+      document.querySelector("#modal-close").addEventListener("click", closeModal);
+      document.querySelector("#modal-cancel").addEventListener("click", closeModal);
+      modal.addEventListener("click", (event) => {
+        if (event.target === modal) {
+          closeModal();
+        }
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          closeModal();
+        }
+      });
+
+      if (window.lucide) {
+        window.lucide.createIcons();
+      }
+    </script>
+  </body>
+</html>

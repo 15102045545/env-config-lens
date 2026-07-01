@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: #eef3f8;
+  color: #182230;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  max-height: 3.15rem;
+  overflow: hidden;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.28);
+  outline-offset: 2px;
+}
