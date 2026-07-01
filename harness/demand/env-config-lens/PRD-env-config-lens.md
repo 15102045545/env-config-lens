@@ -2,11 +2,14 @@
 
 ## Metadata
 
-- Status: Ready for planning
+- Status: Ready for M1 implementation planning; M2 requires SSH and Keychain technical spike closure
 - Date: 2026-07-01
-- Scope: local GUI env source settings, local file env reading, SSH remote env reading, multi-environment env comparison, single-source env health governance, local-only settings persistence, open-source project bootstrap
+- Scope: staged local GUI env source settings, M1 local file env reading, M1 multi-environment env comparison, M1 single-source env health governance, local-only settings persistence, M2 SSH remote env reading, open-source project bootstrap
 - Requirement owner: Env Config Lens maintainers
 - Canonical document: `harness/demand/env-config-lens/PRD-env-config-lens.md`
+- Milestone PRDs:
+  - M1 local foundation: `harness/demand/env-config-lens/PRD-env-config-lens-M1-local-foundation.md`
+  - M2 SSH remote sources: `harness/demand/env-config-lens/PRD-env-config-lens-M2-ssh-remote.md`
 - Target repository name: `env-config-lens`
 - Target local repository path: a sibling directory outside any consuming application repository
 
@@ -22,6 +25,8 @@ The target solution is an independent open-source tool named `env-config-lens`. 
 - Remote application containers may share one active env file while injecting process identity separately at runtime.
 - Existing manual investigation artifacts are not reusable product mechanisms and must not become part of the new tool's runtime.
 - The new solution must be a standalone repository, not a package inside any consuming application monorepo.
+- The standalone repository has been initialized as an open-source-safe scaffold with README, license, `.gitignore`, and this PRD.
+- The phase-one application implementation is not present yet: there is no package manifest, local service, frontend app, database schema, source reader, parser, or automated test suite in the scaffold.
 
 ## Core Problem
 
@@ -39,6 +44,13 @@ These two surfaces share env source settings and source reading, but their data 
 This is a new standalone open-source engineering tool. The first phase is a local-only macOS-compatible GUI backed by a local service. It does not modify any consuming application repository, does not become part of another application's runtime, and does not introduce a hosted service.
 
 The requirement is security-sensitive because complete env values, including secrets, are intentionally displayed in the browser UI.
+
+Phase one is delivered through two implementation milestones:
+
+- M1 local foundation: local file sources, local SQLite settings, parser and health rules, multi-environment comparison, GUI shell, local-only service security, and release-blocking no-leak tests.
+- M2 SSH remote sources: SSH remote file sources, SSH config alias support, private key path selection, macOS Keychain passphrase references, connection tests, and remote read security gates.
+
+M1 must be independently usable without SSH support. M2 must not begin until M1's security and persistence gates pass.
 
 ## Target Audience And Stakeholders
 
@@ -96,7 +108,7 @@ The default page is Multi-environment comparison.
 
 ### Local File Source
 
-A local file source setting contains:
+Local file sources are in M1. A local file source setting contains:
 
 - Source name.
 - File path.
@@ -110,7 +122,7 @@ The tool must not validate file names such as `.env`; it validates parseability 
 
 ### SSH Remote File Source
 
-An SSH remote file source setting supports two explicit modes.
+SSH remote file sources are in M2. M1 must not show SSH source creation as an available action. An SSH remote file source setting supports two explicit modes.
 
 Standard field mode:
 
@@ -174,11 +186,22 @@ Settings are stored in local SQLite at a macOS application data location such as
 
 ## Env Parsing Semantics
 
-Env parsing is not locked to one library. The implementation may combine mature parser and lint libraries or implement a lightweight parser where needed, as long as it satisfies the product behavior.
+Env parsing is not locked to one library. The implementation may combine mature parser and lint libraries or implement a lightweight parser where needed, as long as it satisfies the product behavior and the fixture-based acceptance tests.
 
 Multi-environment comparison uses the final effective parsed `key -> value` map for each source. It does not use comments, grouping, source order, or line numbers. Values are compared after env parsing, so quoted and escaped syntax follows parser semantics. Variable expansion is not performed; a value such as `${B}` remains a string value for comparison.
 
 Single-source health governance may use a richer parse or lint path to identify file-internal issues such as duplicate keys. This health model is separate from the multi-environment comparison model.
+
+M1 parser contract:
+
+- Variable expansion is not performed.
+- Duplicate keys use last assignment wins for the final effective `key -> value` map.
+- Duplicate keys are still reported by single-source health governance.
+- Empty value means the parsed value is an empty string.
+- Whitespace-only value means the parsed value contains only whitespace characters after parser unquoting semantics.
+- Illegal key name uses the fixed rule `[A-Za-z_][A-Za-z0-9_]*`.
+- Empty key means a line attempts a key/value assignment without a key before `=`.
+- Parser behavior must be covered by committed generic fixtures that contain no real env values.
 
 ## Multi-Environment Comparison
 
@@ -191,6 +214,15 @@ Required comparison statuses:
 - `different`: the key exists in multiple sources and values are not all equal.
 - `empty`: one or more sources have an empty or whitespace-only value for the key.
 - `source-only`: a key exists in exactly one successfully read selected source.
+
+Status precedence for a row is deterministic:
+
+1. Failed or parse-failed sources are excluded from row classification and reported at source level.
+2. `empty` if one or more successful participating sources contain the key with an empty or whitespace-only value.
+3. `source-only` if the key exists in exactly one successful participating source.
+4. `missing` if the key exists in at least one successful participating source and is absent in at least one other successful participating source.
+5. `same` if all successful participating sources have the key and all values are exactly equal.
+6. `different` if all successful participating sources have the key and values are not all equal.
 
 Value comparison is strict string comparison after parsing. The tool must not normalize URLs, JSON, casing, whitespace beyond the explicit empty/whitespace-only status, secret formats, or provider-specific value formats in phase one.
 
@@ -257,11 +289,13 @@ The settings view:
 - Lists all configured env sources.
 - Supports adding, editing, deleting, enabling, and disabling sources.
 - Supports local file source creation through a backend-driven macOS file picker and manual path entry.
-- Supports SSH source creation in standard field mode and SSH config alias mode.
-- Supports private key path selection through a backend-driven macOS file picker.
+- Supports SSH source creation in standard field mode and SSH config alias mode in M2.
+- Supports private key path selection through a backend-driven macOS file picker in M2.
 - Supports connection/readability tests that do not return env content.
 - Supports manual ordering of sources, stored as `displayOrder`.
 - Does not support grouping in phase one.
+
+M1 Settings must expose local file source management only. M2 adds SSH source forms after the SSH and Keychain gates are implemented and verified.
 
 ## API Expectations
 
@@ -279,6 +313,8 @@ API names are implementation guidance, not a fixed contract, but phase one shoul
 - `POST /api/health`: read one source and return key/value facts plus health issues.
 
 Every API request from the UI must include the startup session token. CORS must allow only the local UI origin. The server must listen only on `127.0.0.1` and must not bind `0.0.0.0`.
+
+M1 API coverage includes local file sources, local file picker, source readability test for local files, comparison, health, token enforcement, CORS enforcement, and local-only binding. M2 adds SSH-specific source fields, private key path picker, SSH source readability test, remote read, and Keychain reference handling.
 
 ## Data Model Expectations
 
@@ -312,7 +348,7 @@ Every API request from the UI must include the startup session token. CORS must 
 - `remoteEnvPath`
 - `keychainPassphraseRef`
 
-The exact schema may differ, but it must preserve the same facts and must not persist env content or env values.
+`SshRemoteFileSourceConfig` is introduced in M2. The exact schema may differ, but it must preserve the same facts and must not persist env content or env values.
 
 ### In-Memory Source Read Model
 
@@ -377,6 +413,15 @@ Each issue contains:
 - SSH connection failures must not print command output that includes env contents.
 - Read failures should use categories such as `connection_failed`, `auth_failed`, `permission_denied`, `path_not_found`, `parse_failed`, and `unknown_error`.
 
+Security release gates:
+
+- A committed generic sentinel value must be used in tests to prove env values are absent from SQLite, seed import output, backend logs, frontend logs, and error responses.
+- A local-only network binding check must prove the service listens on `127.0.0.1` and not `0.0.0.0`.
+- API calls without the startup session token must be rejected.
+- API calls from a non-local UI origin must be rejected by CORS.
+- Full-env export must not exist in the UI or API.
+- Failure of any security release gate blocks release of the milestone.
+
 ## Development Seed
 
 The open-source repository must not include real server hosts, usernames, paths, private key paths, or env values.
@@ -385,7 +430,7 @@ During local development, a Git-ignored seed file may be used, for example:
 
 `.local/env-sources.local.json`
 
-The seed may contain a developer's real local source settings for validating local and SSH source flows. The seed is imported into SQLite by a development command such as `pnpm seed:local`. Runtime source reading must still use the same settings path as normal product behavior. Business logic must not bypass settings to read the seed directly.
+The seed may contain a developer's real source settings for validating milestone-supported source flows. In M1, the seed may contain local file source settings only. In M2, it may also contain SSH source settings. The seed is imported into SQLite by a development command such as `pnpm seed:local`. Runtime source reading must still use the same settings path as normal product behavior. Business logic must not bypass settings to read the seed directly.
 
 `.local/` and the local SQLite database must be ignored by Git.
 
@@ -406,6 +451,7 @@ No `.app` package, native installer, menu bar app, auto-update flow, signing, or
 
 The default stack is TypeScript full stack:
 
+- Package manager: pnpm.
 - Local service: Node.js + Fastify.
 - Frontend: React + Vite + Tailwind CSS.
 - Settings database: SQLite.
@@ -417,7 +463,7 @@ The architecture should isolate OS-specific adapters for future Windows support.
 
 ## Open-Source Repository Requirements
 
-The new repository must be independently usable and must not depend on any consuming application repository.
+The repository must be independently usable and must not depend on any consuming application repository.
 
 Repository rules:
 
@@ -426,15 +472,17 @@ Repository rules:
 - Do not commit private keys.
 - Do not commit local SQLite databases.
 - Do not commit `.local/` seed files.
-- Provide clear README instructions for install, start, adding local file sources, adding SSH sources, and security boundaries.
+- Provide clear README instructions for install, start, adding local file sources, adding milestone-supported source types, and security boundaries.
 - Include a `.gitignore` that excludes local seeds, databases, logs, and generated artifacts that may contain sensitive local information.
 - Keep sample configuration generic and non-sensitive if examples are needed.
 
-GitHub publication is part of the eventual delivery scope: create the public GitHub repository, make the first commit, and push the default branch. This PRD does not perform that implementation step.
+The repository has an initialized default branch and remote. Before each release or public contribution milestone, maintainers must verify that no env contents, env values, private keys, local database files, or machine-specific seed files are tracked.
 
 ## User Scenarios
 
 ### Scenario 1: Developer compares local test, local prod, test ECS, and production ECS env
+
+Milestone: M2, after SSH remote sources are implemented.
 
 1. Developer starts `env-config-lens`.
 2. Developer configures local file sources for local env files.
@@ -448,6 +496,8 @@ GitHub publication is part of the eventual delivery scope: create the public Git
 
 ### Scenario 2: Developer checks one env source for internal health
 
+Milestone: M1 for local file sources; M2 for SSH remote sources.
+
 1. Developer opens Single-source health governance.
 2. Developer selects one source.
 3. Service reads and parses the source in real time.
@@ -457,6 +507,8 @@ GitHub publication is part of the eventual delivery scope: create the public Git
 
 ### Scenario 3: SSH source fails while other sources succeed
 
+Milestone: M2.
+
 1. Developer selects three sources.
 2. One SSH source fails because the private key or permission is invalid.
 3. Service returns successful source data and one failed source result.
@@ -465,6 +517,8 @@ GitHub publication is part of the eventual delivery scope: create the public Git
 6. Developer can go to Settings and run a source test.
 
 ### Scenario 4: New user configures sources from scratch
+
+Milestone: M1 for local file source setup; M2 adds SSH source setup.
 
 1. User clones the open-source repository and starts the app.
 2. Settings database is empty.
@@ -476,6 +530,8 @@ GitHub publication is part of the eventual delivery scope: create the public Git
 
 ### Scenario 5: Maintainer validates with real local sources during development
 
+Milestone: M1 for local file seed settings; M2 for SSH seed settings.
+
 1. Maintainer creates `.local/env-sources.local.json` with real local harness source settings.
 2. Maintainer runs the seed import command.
 3. The command writes only settings into SQLite.
@@ -486,6 +542,7 @@ GitHub publication is part of the eventual delivery scope: create the public Git
 
 - The tool is a Web page plus local service, not a pure desktop app.
 - Phase one supports macOS only.
+- Phase one is delivered in M1 local foundation and M2 SSH remote source milestones.
 - Future Windows support should be possible through OS adapter boundaries.
 - Local service must bind only to `127.0.0.1`.
 - Local service must not bind to `0.0.0.0`.
@@ -493,17 +550,17 @@ GitHub publication is part of the eventual delivery scope: create the public Git
 - CORS allows only the local UI origin.
 - Env contents are stateless; settings are persistent.
 - Settings use local SQLite.
-- Sensitive passphrases use macOS Keychain.
-- Private keys are referenced by path only.
+- Sensitive passphrases use macOS Keychain in M2.
+- Private keys are referenced by path only in M2.
 - Env sources must be configured through Settings.
 - Every setting item is a readable env source.
 - Local file selection is performed by the backend service through a macOS file picker.
 - Manual local path entry is supported.
-- SSH remote source reads one configured remote env file.
-- SSH source supports standard fields and `~/.ssh/config` alias mode.
-- SSH source does not accept arbitrary remote commands.
-- SSH source does not use `sudo` by default.
-- SSH source preserves `known_hosts` verification.
+- SSH remote source reads one configured remote env file in M2.
+- SSH source supports standard fields and `~/.ssh/config` alias mode in M2.
+- SSH source does not accept arbitrary remote commands in M2.
+- SSH source does not use `sudo` by default in M2.
+- SSH source preserves `known_hosts` verification in M2.
 - Multi-source compare is real-time per request.
 - Single-source health is real-time per request.
 - No env content cache.
@@ -537,7 +594,8 @@ GitHub publication is part of the eventual delivery scope: create the public Git
 
 - Repository name: `env-config-lens`.
 - Repository path: a standalone checkout outside any consuming application repository.
-- Implementation stack: TypeScript, Node.js, Fastify, React, Vite, Tailwind CSS, SQLite.
+- Implementation stack: TypeScript, pnpm, Node.js, Fastify, React, Vite, Tailwind CSS, SQLite.
+- Milestone order: M1 local foundation first, M2 SSH remote sources second.
 - Phase one source providers: local file and SSH remote file.
 - UI information architecture: Multi-environment comparison, Single-source health governance, Settings.
 - Runtime state boundary: env contents live only in memory for the current request/response path.
@@ -597,51 +655,79 @@ GitHub publication is part of the eventual delivery scope: create the public Git
 
 ## Unresolved Questions
 
-No blocking product questions remain for phase-one PRD planning. Non-blocking implementation choices remain:
+No blocking product questions remain for M1 implementation planning. M1 implementation choices remain, but they must preserve the parser contract, security gates, and milestone scope in this PRD:
 
-- Exact package manager for the new repository.
 - Exact SQLite library or ORM.
-- Exact SSH implementation approach.
 - Exact env parser/linter library combination.
 - Exact macOS file picker adapter implementation.
-- Exact Keychain adapter implementation.
 
-These are implementation planning decisions and do not change the confirmed product requirements above.
+M2 must not enter implementation until these technical spike outputs are recorded:
+
+- Exact SSH implementation approach, including known-host verification behavior.
+- Exact Keychain adapter implementation.
+- Argument-safety model for any system `ssh` wrapper.
+- Sanitized error taxonomy for SSH connection, authentication, permission, path, parse, and unknown failures.
+
+These are implementation planning decisions and do not change the confirmed product requirements above, but they block M2 implementation start.
 
 ## Success Criteria
 
-- A user can clone the repository, install dependencies, run one command, and open the local GUI.
+M1 success criteria:
+
+- A user can clone the repository, install dependencies with pnpm, run one command, and open the local GUI.
 - The service listens only on `127.0.0.1`.
-- The UI can manage local file and SSH remote file sources through Settings.
-- Source settings persist across restarts.
+- The UI can manage local file sources through Settings.
+- Local file source settings persist across restarts.
 - Env contents and env values do not persist across requests or restarts.
-- The comparison view can compare at least four selected sources and show full values.
-- The comparison view clearly identifies `missing`, `same`, `different`, `empty`, and `source-only`.
-- The health view can inspect one source and report duplicate keys, parse failures, empty values, whitespace-only values, empty keys, and illegal keys where parser/linter support exists.
-- Failed sources do not prevent successful sources from being compared.
-- Logs and settings contain no env values.
+- The comparison view can compare at least four selected local file sources and show full values.
+- The comparison view clearly identifies `missing`, `same`, `different`, `empty`, and `source-only` using the defined status precedence.
+- The health view can inspect one local file source and report duplicate keys, parse failures, empty values, whitespace-only values, empty keys, and illegal keys.
+- Failed local file sources do not prevent successful sources from being compared.
+- Logs, settings, seed import output, and error responses contain no env values.
 - The repository can be made public without exposing project-specific secrets or server settings.
 
+M2 success criteria:
+
+- The UI can manage SSH remote file sources through Settings.
+- SSH source settings persist across restarts without storing private key contents or passphrases in SQLite.
+- SSH connection/readability tests return sanitized success or failure without env contents.
+- SSH remote reads participate in comparison and health flows with the same parser, comparison, and no-leak gates as local file sources.
+- SSH failures do not prevent successful sources from being compared.
+- `known_hosts` verification remains enabled and is covered by adapter-level tests or documented verification.
+
 ## Acceptance Criteria
+
+M1 acceptance criteria:
 
 - Starting the app with the documented command opens the browser UI and starts the local service.
 - Network inspection confirms the service binds to `127.0.0.1` only.
 - API calls without the startup token are rejected.
 - API calls from non-local UI origins are rejected by CORS.
 - Creating a local file source persists its path and metadata in SQLite.
-- Creating an SSH source persists its metadata and private key path, but not private key content or passphrase.
-- Testing an SSH source reports success or a sanitized failure without returning env content.
-- Running comparison with two or more successful sources returns a matrix with full values.
-- Running comparison with one failed source and at least one successful source returns partial results plus failed source status.
-- Empty or whitespace-only values are classified visibly.
+- Running comparison with two or more successful local file sources returns a matrix with full values.
+- Running comparison with one failed local file source and at least one successful local file source returns partial results plus failed source status.
+- Empty or whitespace-only values are classified visibly according to the defined status precedence.
 - Same rows can be viewed, and problem rows can be focused by filters.
 - Long values do not break the table layout.
 - Copying a single value copies the real value.
+- Copying one key's multi-source comparison result is available without a full-env export.
 - No one-click full env export exists.
 - Single-source health view shows complete key/value rows and issue filters.
+- Duplicate, parse failure, empty value, whitespace-only value, empty key, and illegal key fixtures are all reported.
 - Source order changes persist and affect comparison column order.
 - `.local/`, SQLite database files, logs, and real development seeds are ignored by Git.
 - A development seed import writes settings only and does not log env values.
+- Sentinel no-leak tests prove the sentinel env value is absent from SQLite, seed import output, backend logs, frontend logs, and error responses.
+
+M2 acceptance criteria:
+
+- Creating an SSH source persists its metadata and private key path, but not private key content or passphrase.
+- SSH passphrase references use macOS Keychain and do not store passphrases in SQLite.
+- Testing an SSH source reports success or a sanitized failure without returning env content.
+- SSH remote file reads do not download env content to a normal local file path.
+- SSH comparison with one failed source and at least one successful source returns partial results plus failed source status.
+- SSH source failures are categorized as `connection_failed`, `auth_failed`, `permission_denied`, `path_not_found`, `parse_failed`, or `unknown_error`.
+- M2 no-leak tests prove SSH env values are absent from SQLite, seed import output, backend logs, frontend logs, and error responses.
 
 ## Implementation Constraints
 
@@ -653,8 +739,10 @@ These are implementation planning decisions and do not change the confirmed prod
 - UI tables must use stable dimensions and virtual scrolling or pagination for large env sets.
 - Tailwind styling should support dense, professional engineering workflows rather than a marketing landing page.
 - Testing should include unit tests for comparison classification and source failure behavior.
+- Testing should include parser contract fixtures for duplicate keys, empty values, whitespace-only values, empty keys, illegal keys, quoted values, escaped values, and no variable expansion.
 - Testing should include integration-level checks that settings persistence excludes env contents.
 - Testing should include a local-only network binding check.
+- Testing should include release-blocking sentinel no-leak checks for every implemented source type.
 
 ## Evidence And Source References
 
@@ -663,6 +751,7 @@ These are implementation planning decisions and do not change the confirmed prod
 - Internal server access notes reviewed during requirement discovery, including the distinction between source settings and env contents.
 - Harness rules reviewed during requirement discovery, including the requirement that local investigation artifacts and sensitive env values stay out of docs, logs, and committed files.
 - Local manual investigation artifacts demonstrated the workflow this product replaces, but they are not product inputs and must not be committed.
+- Local repository feasibility review on 2026-07-01 confirmed that the repository scaffold exists and the phase-one application implementation is not present yet.
 
 ## Compatibility Expectations
 

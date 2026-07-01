@@ -12,10 +12,17 @@ The canonical product requirement document is:
 
 [`harness/demand/env-config-lens/PRD-env-config-lens.md`](harness/demand/env-config-lens/PRD-env-config-lens.md)
 
+Implementation is split into milestone PRDs:
+
+- M1 local foundation: [`harness/demand/env-config-lens/PRD-env-config-lens-M1-local-foundation.md`](harness/demand/env-config-lens/PRD-env-config-lens-M1-local-foundation.md)
+- M2 SSH remote sources: [`harness/demand/env-config-lens/PRD-env-config-lens-M2-ssh-remote.md`](harness/demand/env-config-lens/PRD-env-config-lens-M2-ssh-remote.md)
+
 ## Phase-One Product Shape
 
 - Web UI plus local service.
 - macOS first.
+- M1 ships a local-file-only foundation.
+- M2 adds SSH remote file sources after the SSH and Keychain gates are closed.
 - Local service binds only to `127.0.0.1`.
 - Startup session token required for frontend API calls.
 - CORS restricted to the local UI origin.
@@ -52,7 +59,7 @@ A local file source stores only source metadata such as name, file path, enabled
 
 ### SSH Remote File Source
 
-An SSH source reads one configured remote env file through either explicit SSH fields or a local `~/.ssh/config` alias. It does not expose arbitrary remote command input and does not use `sudo` by default.
+An SSH source is planned for M2. It reads one configured remote env file through either explicit SSH fields or a local `~/.ssh/config` alias. It does not expose arbitrary remote command input and does not use `sudo` by default.
 
 ## Planned UI
 
