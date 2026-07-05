@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EnvComparisonResult, EnvHealthResult, EnvSource, EnvSourceContentResult, SshRemoteFileConfig } from "../shared/types";
@@ -49,10 +49,30 @@ beforeEach(() => {
     }
 
     if (url.endsWith("/api/runtime-boundary")) {
-      return jsonResponse({ bindHost: "127.0.0.1", tokenRequired: true, persistedState: "settings-only" });
+      return jsonResponse({
+        bindHost: "0.0.0.0",
+        accessScope: "lan",
+        tokenRequired: true,
+        apiAccessPolicy: "token",
+        persistedState: "settings-only",
+        networkUrls: ["http://192.168.31.89:4173/?token=ui-test-token"]
+      });
     }
     if (url.endsWith("/api/sources") && method === "GET") {
       return jsonResponse({ sources: mockSources });
+    }
+    if (url.endsWith("/api/sources/upload") && method === "POST") {
+      const body = init?.body as FormData;
+      const file = body.get("file") as File;
+      const created = uploadedSource(`uploaded-${mockSources.length + 1}`, String(body.get("name")), file.name, file.size);
+      mockSources = [...mockSources, created];
+      mockSourceContentById[created.id] = {
+        sourceId: created.id,
+        sourceName: created.name,
+        status: "success",
+        content: await file.text()
+      };
+      return jsonResponse({ source: created }, 201);
     }
     if (url.endsWith("/api/sources") && method === "POST") {
       const body = typeof init?.body === "string" ? JSON.parse(init.body) : {};
@@ -97,6 +117,14 @@ afterEach(() => {
 });
 
 describe("App", () => {
+  it("shows the LAN runtime boundary", async () => {
+    render(<App />);
+
+    expect(await screen.findByText("0.0.0.0")).toBeInTheDocument();
+    expect((await screen.findAllByText("局域网可访问")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Token 必需").length).toBeGreaterThan(0);
+  });
+
   it("defaults the comparison table to problem rows while keeping same rows available", async () => {
     render(<App />);
 
@@ -239,6 +267,53 @@ describe("App", () => {
     expect(screen.getByText("本地文件路径不存在。")).toBeInTheDocument();
     expect(screen.queryByText("DUP=one")).not.toBeInTheDocument();
   });
+
+  it("uploads a selected env file from Settings and reads it as an uploaded source", async () => {
+    render(<App />);
+
+    await screen.findByText("DATABASE_URL");
+    await userEvent.click(screen.getByRole("button", { name: "设置" }));
+    await userEvent.click(screen.getByRole("button", { name: "上传文件" }));
+    await userEvent.type(screen.getByLabelText("来源名称"), "Uploaded dev");
+    const file = new File(["TOKEN=uploaded\nEMPTY=\n"], "uploaded.env", { type: "text/plain" });
+    await userEvent.upload(screen.getByLabelText("上传 .env 文件"), file);
+    await userEvent.click(screen.getByRole("button", { name: "添加上传来源" }));
+
+    expect(await screen.findByText("Uploaded dev")).toBeInTheDocument();
+    expect(screen.getAllByText("上传文件").length).toBeGreaterThan(0);
+    expect(screen.getByText(/uploaded.env/)).toBeInTheDocument();
+
+    const uploadCall = vi.mocked(fetch).mock.calls.find((call) => String(call[0]).endsWith("/api/sources/upload"));
+    expect(uploadCall).toBeTruthy();
+    const body = uploadCall?.[1]?.body as FormData;
+    expect(body.get("name")).toBe("Uploaded dev");
+    expect((body.get("file") as File).name).toBe("uploaded.env");
+
+    await userEvent.click(screen.getByRole("button", { name: "查看 Uploaded dev 的 .env 内容" }));
+    expect(await screen.findByTestId("env-source-content")).toHaveTextContent("TOKEN=uploaded");
+  });
+
+  it("accepts a dragged env file in the uploaded source tab", async () => {
+    render(<App />);
+
+    await screen.findByText("DATABASE_URL");
+    await userEvent.click(screen.getByRole("button", { name: "设置" }));
+    await userEvent.click(screen.getByRole("button", { name: "上传文件" }));
+    await userEvent.type(screen.getByLabelText("来源名称"), "Dragged source");
+    const file = new File(["DRAGGED=value\n"], "dragged.env", { type: "text/plain" });
+    fireEvent.drop(screen.getByTestId("uploaded-file-dropzone"), {
+      dataTransfer: {
+        files: [file]
+      }
+    });
+
+    expect(await screen.findByText("dragged.env")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "添加上传来源" }));
+
+    expect(await screen.findByText("Dragged source")).toBeInTheDocument();
+    const uploadCall = vi.mocked(fetch).mock.calls.filter((call) => String(call[0]).endsWith("/api/sources/upload")).at(-1);
+    expect((uploadCall?.[1]?.body as FormData).get("file")).toBe(file);
+  });
 });
 
 function source(id: string, name: string, filePath: string): EnvSource {
@@ -266,6 +341,24 @@ function sshSource(id: string, name: string, sshRemoteFile: SshRemoteFileConfig)
     createdAt: "2026-07-01T00:00:00.000Z",
     updatedAt: "2026-07-01T00:00:00.000Z",
     sshRemoteFile
+  };
+}
+
+function uploadedSource(id: string, name: string, fileName: string, sizeBytes: number): EnvSource {
+  return {
+    id,
+    type: "uploaded-file",
+    name,
+    enabled: true,
+    displayOrder: mockSources.length + 1,
+    note: "",
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt: "2026-07-01T00:00:00.000Z",
+    uploadedFile: {
+      fileName,
+      sizeBytes,
+      uploadedAt: "2026-07-01T00:00:00.000Z"
+    }
   };
 }
 

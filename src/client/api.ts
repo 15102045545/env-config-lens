@@ -3,9 +3,12 @@ import { apiErrorMessages } from "../shared/displayText";
 
 export interface RuntimeBoundary {
   bindHost: string;
+  accessScope?: "local" | "lan";
   tokenRequired: boolean;
+  apiAccessPolicy?: "token";
   persistedState: string;
   corsOrigin?: string;
+  networkUrls?: string[];
   storage?: string;
 }
 
@@ -33,6 +36,19 @@ export class ApiClient {
     const response = await this.request<{ source: EnvSource }>("/api/sources", {
       method: "POST",
       body: JSON.stringify({ type: "ssh-remote-file", ...input })
+    });
+    return response.source;
+  }
+
+  async createUploadedSource(input: { name: string; enabled: boolean; note: string; file: File }) {
+    const body = new FormData();
+    body.set("name", input.name);
+    body.set("enabled", String(input.enabled));
+    body.set("note", input.note);
+    body.set("file", input.file);
+    const response = await this.request<{ source: EnvSource }>("/api/sources/upload", {
+      method: "POST",
+      body
     });
     return response.source;
   }
@@ -100,7 +116,8 @@ export class ApiClient {
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
     headers.set("x-env-config-lens-token", this.token);
-    if (init.body && !headers.has("content-type")) {
+    const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
+    if (init.body && !isFormData && !headers.has("content-type")) {
       headers.set("content-type", "application/json");
     }
 
