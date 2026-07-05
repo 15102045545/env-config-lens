@@ -72,10 +72,10 @@ vi.mock("./sourceReader", () => ({
 }));
 
 const token = "test-session-token";
-const uiOrigin = "http://127.0.0.1:4173";
+const requestOrigin = "http://127.0.0.1:4173";
 const authHeaders = {
   "x-env-config-lens-token": token,
-  origin: uiOrigin
+  origin: requestOrigin
 };
 
 let tempDir: string;
@@ -85,7 +85,7 @@ let app: FastifyInstance;
 beforeEach(async () => {
   tempDir = mkdtempSync(join(tmpdir(), "ecl-api-ssh-"));
   store = new SettingsStore(join(tempDir, "settings.sqlite"));
-  app = await buildApp({ store, sessionToken: token, uiOrigin });
+  app = await buildApp({ store, sessionToken: token });
 });
 
 afterEach(async () => {

@@ -6,7 +6,7 @@ import { ApiClient, type RuntimeBoundary, readStartupToken } from "./api";
 
 type View = "comparison" | "health" | "settings";
 type StatusFilter = "problem" | ComparisonStatus | "all";
-type SourceFormType = "local-file" | "ssh-standard" | "ssh-alias";
+type SourceFormType = "local-file" | "ssh-standard" | "ssh-alias" | "uploaded-file";
 
 interface SourceFormState {
   sourceType: SourceFormType;
@@ -22,6 +22,7 @@ interface SourceFormState {
   remoteEnvPath: string;
   keychainService: string;
   keychainAccount: string;
+  uploadedFile: File | null;
 }
 
 const problemStatuses = new Set<ComparisonStatus>(["different", "missing", "empty", "source-only"]);
@@ -44,7 +45,8 @@ const emptySourceForm: SourceFormState = {
   sshAlias: "",
   remoteEnvPath: "",
   keychainService: "",
-  keychainAccount: ""
+  keychainAccount: "",
+  uploadedFile: null
 };
 
 export function App() {
@@ -187,12 +189,14 @@ export function App() {
               note: form.note,
               enabled: form.enabled
             })
-          : await api.createSshSource({
-              name: form.name,
-              note: form.note,
-              enabled: form.enabled,
-              sshRemoteFile: buildSshRemoteFileConfig(form)
-            });
+          : form.sourceType === "uploaded-file"
+            ? await createUploadedSource(api, form)
+            : await api.createSshSource({
+                name: form.name,
+                note: form.note,
+                enabled: form.enabled,
+                sshRemoteFile: buildSshRemoteFileConfig(form)
+              });
       setForm({ ...emptySourceForm, sourceType: form.sourceType });
       const nextSources = await refreshSources();
       const nextSelected = [...selectedSourceIds, created.id];
@@ -316,8 +320,9 @@ export function App() {
               运行边界
             </div>
             <dl className="mt-3 space-y-2 text-xs">
-              <BoundaryItem label="绑定地址" value={runtime?.bindHost ?? "127.0.0.1"} />
-              <BoundaryItem label="会话令牌" value={runtime?.tokenRequired ? "必需" : "未启用"} accent="ok" />
+              <BoundaryItem label="绑定地址" value={runtime?.bindHost ?? "0.0.0.0"} />
+              <BoundaryItem label="访问范围" value={labelAccessScope(runtime?.accessScope)} accent={runtime?.accessScope === "lan" ? "ok" : undefined} />
+              <BoundaryItem label="会话令牌" value={runtime?.tokenRequired ? "Token 必需" : "未启用"} accent="ok" />
               <BoundaryItem label="存储范围" value={labelPersistedState(runtime?.persistedState)} />
             </dl>
           </div>
@@ -332,9 +337,9 @@ export function App() {
               <h2 className="text-xl font-semibold">{titleFor(view)}</h2>
             </div>
             <div className="grid gap-2 text-xs sm:grid-cols-2 xl:flex">
-              <BoundaryPill icon={<ShieldCheck className="h-3.5 w-3.5" />} tone="blue" label="仅本地服务" />
+              <BoundaryPill icon={<ShieldCheck className="h-3.5 w-3.5" />} tone="blue" label={labelAccessScope(runtime?.accessScope)} />
+              <BoundaryPill icon={<ShieldCheck className="h-3.5 w-3.5" />} tone="amber" label="Token 必需" />
               <BoundaryPill icon={<Database className="h-3.5 w-3.5" />} tone="emerald" label="SQLite 存储设置" />
-              <BoundaryPill icon={<ShieldCheck className="h-3.5 w-3.5" />} tone="amber" label=".env 值仅在内存中" />
               <BoundaryPill icon={<Copy className="h-3.5 w-3.5" />} tone="red" label="不提供完整 .env 导出" />
             </div>
           </div>
@@ -767,7 +772,8 @@ function SettingsView(props: {
                 {[
                   ["local-file", "本地文件"],
                   ["ssh-standard", "SSH 标准"],
-                  ["ssh-alias", "SSH 别名"]
+                  ["ssh-alias", "SSH 别名"],
+                  ["uploaded-file", "上传文件"]
                 ].map(([value, label]) => (
                   <button
                     key={value}
@@ -794,6 +800,13 @@ function SettingsView(props: {
                 </div>
               )}
 
+              {props.form.sourceType === "uploaded-file" && (
+                <UploadedFilePicker
+                  file={props.form.uploadedFile}
+                  onFileChange={(uploadedFile) => props.setForm((current) => ({ ...current, uploadedFile }))}
+                />
+              )}
+
               {props.form.sourceType === "ssh-standard" && (
                 <div className="space-y-3">
                   <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_110px_minmax(0,1fr)]">
@@ -818,7 +831,7 @@ function SettingsView(props: {
                 </div>
               )}
 
-              {props.form.sourceType !== "local-file" && (
+              {(props.form.sourceType === "ssh-standard" || props.form.sourceType === "ssh-alias") && (
                 <div className="grid gap-3 lg:grid-cols-2">
                   <TextField label="Keychain 服务" value={props.form.keychainService} onChange={(keychainService) => props.setForm((current) => ({ ...current, keychainService }))} />
                   <TextField label="Keychain 账户" value={props.form.keychainAccount} onChange={(keychainAccount) => props.setForm((current) => ({ ...current, keychainAccount }))} />
@@ -830,7 +843,7 @@ function SettingsView(props: {
                   <input type="checkbox" checked={props.form.enabled} onChange={(event) => props.setForm((current) => ({ ...current, enabled: event.target.checked }))} />
                   启用
                 </label>
-                <button className="inline-flex items-center justify-center gap-2 rounded-md bg-[#182230] px-3 py-2 text-sm font-medium text-white"><FilePlus2 className="h-4 w-4" /> {props.form.sourceType === "local-file" ? "添加本地来源" : "添加 SSH 来源"}</button>
+                <button className="inline-flex items-center justify-center gap-2 rounded-md bg-[#182230] px-3 py-2 text-sm font-medium text-white"><FilePlus2 className="h-4 w-4" /> {submitLabelFor(props.form.sourceType)}</button>
               </div>
             </form>
           </Panel>
@@ -867,6 +880,7 @@ function SettingsView(props: {
             <h3 className="text-sm font-semibold">存储模型</h3>
             <div className="mt-3 space-y-3">
               <InfoBox tone="emerald" title="已持久化" text="来源名称、启用状态、显示顺序、本地文件路径和备注" />
+              <InfoBox tone="amber" title="本次内存" text="上传源的 .env 文件内容只保存在当前服务进程，重启后丢失" />
               <InfoBox tone="red" title="不持久化" text=".env 内容、.env 值、解析映射、对比结果、口令和私钥内容" />
             </div>
           </Panel>
@@ -923,6 +937,58 @@ function EnvFileContentViewer(props: { content: string }) {
   return <pre data-testid="env-source-content" className="max-h-[60vh] overflow-auto rounded-md bg-slate-950 p-4 font-mono text-xs leading-5 text-slate-50"><code>{props.content}</code></pre>;
 }
 
+function UploadedFilePicker(props: { file: File | null; onFileChange: (file: File | null) => void }) {
+  function acceptFiles(files: FileList | File[] | null | undefined) {
+    const file = files?.[0] ?? null;
+    props.onFileChange(file);
+  }
+
+  return (
+    <div className="space-y-2">
+      <label
+        data-testid="uploaded-file-dropzone"
+        className="flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center transition hover:border-blue-300 hover:bg-blue-50"
+        onDragOver={(event) => {
+          event.preventDefault();
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          acceptFiles(event.dataTransfer.files);
+        }}
+      >
+        <FilePlus2 className="h-6 w-6 text-slate-500" />
+        <span className="text-sm font-semibold text-[#182230]">选择或拖拽 .env 文件</span>
+        <span className="text-xs text-slate-500">上传后内容只保存在当前服务进程内，重启后丢失。</span>
+        <input
+          aria-label="上传 .env 文件"
+          className="sr-only"
+          type="file"
+          accept=".env,text/plain"
+          onChange={(event) => acceptFiles(event.target.files)}
+        />
+      </label>
+      {props.file && (
+        <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+          <span className="font-mono font-semibold">{props.file.name}</span>
+          <span className="ml-2 text-blue-700">{formatBytes(props.file.size)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function createUploadedSource(api: ApiClient, form: SourceFormState) {
+  if (!form.uploadedFile) {
+    throw new Error("请选择要上传的 .env 文件。");
+  }
+  return api.createUploadedSource({
+    name: form.name,
+    note: form.note,
+    enabled: form.enabled,
+    file: form.uploadedFile
+  });
+}
+
 function buildSshRemoteFileConfig(form: SourceFormState): SshRemoteFileConfig {
   const keychain =
     form.keychainService.trim() && form.keychainAccount.trim()
@@ -956,6 +1022,10 @@ function readTargetFor(source: EnvSource) {
   if (source.type === "local-file") {
     return source.localFile?.filePath ?? "";
   }
+  if (source.type === "uploaded-file") {
+    const uploaded = source.uploadedFile;
+    return uploaded ? `${uploaded.fileName} (${formatBytes(uploaded.sizeBytes)}，内存)` : "内存上传";
+  }
   const ssh = source.sshRemoteFile;
   if (!ssh) {
     return "";
@@ -964,6 +1034,26 @@ function readTargetFor(source: EnvSource) {
     return `${ssh.sshAlias ?? ""}:${ssh.remoteEnvPath}`;
   }
   return `${ssh.username ?? ""}@${ssh.host ?? ""}:${ssh.remoteEnvPath}`;
+}
+
+function submitLabelFor(sourceType: SourceFormType) {
+  if (sourceType === "local-file") {
+    return "添加本地来源";
+  }
+  if (sourceType === "uploaded-file") {
+    return "添加上传来源";
+  }
+  return "添加 SSH 来源";
+}
+
+function formatBytes(sizeBytes: number) {
+  if (sizeBytes < 1024) {
+    return `${sizeBytes} B`;
+  }
+  if (sizeBytes < 1024 * 1024) {
+    return `${(sizeBytes / 1024).toFixed(sizeBytes < 10 * 1024 ? 1 : 0)} KB`;
+  }
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function TextField(props: {
@@ -1047,8 +1137,12 @@ function MiniStat(props: { label: string; value: string | number; tone?: "red" |
   return <div className={`rounded-md border px-3 py-2 ${tone}`}><span className="block text-base font-semibold">{props.value}</span><span>{props.label}</span></div>;
 }
 
-function InfoBox(props: { tone: "emerald" | "red"; title: string; text: string }) {
-  const tone = props.tone === "emerald" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-red-200 bg-red-50 text-red-900";
+function InfoBox(props: { tone: "emerald" | "amber" | "red"; title: string; text: string }) {
+  const tone = {
+    emerald: "border-emerald-200 bg-emerald-50 text-emerald-900",
+    amber: "border-amber-200 bg-amber-50 text-amber-900",
+    red: "border-red-200 bg-red-50 text-red-900"
+  }[props.tone];
   return <div className={`rounded-md border p-3 ${tone}`}><p className="text-sm font-medium">{props.title}</p><p className="mt-1 text-xs opacity-80">{props.text}</p></div>;
 }
 
@@ -1097,4 +1191,11 @@ function labelPersistedState(value: string | undefined) {
     return "仅设置";
   }
   return value;
+}
+
+function labelAccessScope(value: RuntimeBoundary["accessScope"] | undefined) {
+  if (value === "local") {
+    return "仅本机访问";
+  }
+  return "局域网可访问";
 }

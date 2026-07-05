@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
@@ -7,10 +7,10 @@ import { buildApp } from "./app";
 import { SettingsStore } from "./settingsStore";
 
 const token = "test-session-token";
-const uiOrigin = "http://127.0.0.1:4173";
+const requestOrigin = "http://127.0.0.1:4173";
 const authHeaders = {
   "x-env-config-lens-token": token,
-  origin: uiOrigin
+  origin: requestOrigin
 };
 
 let tempDir: string;
@@ -20,7 +20,7 @@ let app: FastifyInstance;
 beforeEach(async () => {
   tempDir = mkdtempSync(join(tmpdir(), "ecl-api-"));
   store = new SettingsStore(join(tempDir, "settings.sqlite"));
-  app = await buildApp({ store, sessionToken: token, uiOrigin });
+  app = await buildApp({ store, sessionToken: token });
 });
 
 afterEach(async () => {
@@ -31,7 +31,7 @@ afterEach(async () => {
 
 describe("local API security", () => {
   it("rejects API requests without the startup token", async () => {
-    const response = await app.inject({ method: "GET", url: "/api/sources", headers: { origin: uiOrigin } });
+    const response = await app.inject({ method: "GET", url: "/api/sources", headers: { origin: requestOrigin } });
 
     expect(response.statusCode).toBe(401);
     expect(response.json()).toEqual({
@@ -40,7 +40,7 @@ describe("local API security", () => {
     });
   });
 
-  it("rejects API requests from a non-local UI origin", async () => {
+  it("allows API requests from any origin when the startup token is valid", async () => {
     const response = await app.inject({
       method: "GET",
       url: "/api/sources",
@@ -50,14 +50,29 @@ describe("local API security", () => {
       }
     });
 
-    expect(response.statusCode).toBe(403);
-    expect(response.json()).toEqual({
-      error: "local_origin_required",
-      message: "只允许本地 UI 来源访问。"
-    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ sources: [] });
+    expect(response.headers["access-control-allow-origin"]).toBe("https://example.invalid");
   });
 
-  it("reports the local runtime boundary", async () => {
+  it("allows API CORS preflight without the startup token", async () => {
+    const response = await app.inject({
+      method: "OPTIONS",
+      url: "/api/sources",
+      headers: {
+        origin: "https://example.invalid",
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "content-type,x-env-config-lens-token"
+      }
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(response.headers["access-control-allow-origin"]).toBe("https://example.invalid");
+    expect(response.headers["access-control-allow-headers"]).toContain("x-env-config-lens-token");
+    expect(response.headers["access-control-allow-headers"]).toContain("content-type");
+  });
+
+  it("reports the LAN runtime boundary", async () => {
     const response = await app.inject({
       method: "GET",
       url: "/api/runtime-boundary",
@@ -66,8 +81,10 @@ describe("local API security", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
-      bindHost: "127.0.0.1",
+      bindHost: "0.0.0.0",
+      accessScope: "lan",
       tokenRequired: true,
+      apiAccessPolicy: "token",
       persistedState: "settings-only"
     });
   });
@@ -252,6 +269,177 @@ describe("local source workflow", () => {
   });
 });
 
+describe("uploaded source workflow", () => {
+  it("injects uploaded sources into source listing without persisting env contents", async () => {
+    const sentinel = "ECL_SENTINEL_UPLOADED_ENV_93F7";
+
+    const upload = await uploadSource({
+      name: "uploaded-prod",
+      fileName: "prod.env",
+      content: `TOKEN=${sentinel}\nEMPTY=\n`,
+      note: "memory only"
+    });
+
+    expect(upload.statusCode).toBe(201);
+    const created = upload.json().source;
+    expect(created).toMatchObject({
+      type: "uploaded-file",
+      name: "uploaded-prod",
+      enabled: true,
+      note: "memory only",
+      uploadedFile: {
+        fileName: "prod.env",
+        sizeBytes: Buffer.byteLength(`TOKEN=${sentinel}\nEMPTY=\n`, "utf8")
+      }
+    });
+    expect(upload.body).not.toContain(sentinel);
+
+    const list = await app.inject({ method: "GET", url: "/api/sources", headers: authHeaders });
+    expect(list.json().sources).toHaveLength(1);
+    expect(list.json().sources[0]).toMatchObject({ id: created.id, type: "uploaded-file" });
+    expect(list.body).not.toContain(sentinel);
+    expect(readFileSync(store.dbPath, "utf8")).not.toContain(sentinel);
+  });
+
+  it("uses uploaded source contents for test, comparison, health, and raw viewing", async () => {
+    const envContent = "SAME=value\nDIFF=uploaded\nEMPTY=\n";
+    const upload = await uploadSource({ name: "uploaded-dev", fileName: ".env.upload", content: envContent });
+    const uploaded = upload.json().source as { id: string };
+    const localPath = join(tempDir, "local.env");
+    writeFileSync(localPath, "SAME=value\nDIFF=local\n", "utf8");
+    const local = await createSource("local", localPath);
+
+    const testReadability = await app.inject({
+      method: "POST",
+      url: `/api/sources/${uploaded.id}/test`,
+      headers: authHeaders
+    });
+    expect(testReadability.json()).toEqual({
+      sourceId: uploaded.id,
+      status: "success",
+      keyCount: 3
+    });
+
+    const comparison = await app.inject({
+      method: "POST",
+      url: "/api/compare",
+      headers: authHeaders,
+      payload: { sourceIds: [local.id, uploaded.id] }
+    });
+    expect(comparison.statusCode).toBe(200);
+    expect(comparison.json().rows.find((row: { key: string }) => row.key === "DIFF")).toMatchObject({
+      status: "different",
+      valuesBySourceId: {
+        [local.id]: "local",
+        [uploaded.id]: "uploaded"
+      }
+    });
+
+    const health = await app.inject({
+      method: "POST",
+      url: "/api/health",
+      headers: authHeaders,
+      payload: { sourceId: uploaded.id }
+    });
+    expect(health.statusCode).toBe(200);
+    expect(health.json()).toMatchObject({
+      sourceId: uploaded.id,
+      sourceName: "uploaded-dev",
+      status: "success",
+      values: { SAME: "value", DIFF: "uploaded", EMPTY: "" },
+      summary: { empty_value: 1 }
+    });
+
+    const raw = await app.inject({
+      method: "POST",
+      url: `/api/sources/${uploaded.id}/content`,
+      headers: authHeaders
+    });
+    expect(raw.json()).toEqual({
+      sourceId: uploaded.id,
+      sourceName: "uploaded-dev",
+      status: "success",
+      content: envContent
+    });
+  });
+
+  it("drops uploaded sources when the server app is rebuilt", async () => {
+    await uploadSource({ name: "volatile", fileName: "volatile.env", content: "TOKEN=value\n" });
+    expect((await app.inject({ method: "GET", url: "/api/sources", headers: authHeaders })).json().sources).toHaveLength(1);
+
+    await app.close();
+    app = await buildApp({ store, sessionToken: token });
+
+    const listAfterRestart = await app.inject({ method: "GET", url: "/api/sources", headers: authHeaders });
+    expect(listAfterRestart.json()).toEqual({ sources: [] });
+  });
+
+  it("rejects missing, non-multipart, and oversized uploaded files", async () => {
+    const missingFile = await app.inject({
+      method: "POST",
+      url: "/api/sources/upload",
+      headers: { ...authHeaders, "content-type": "multipart/form-data; boundary=ecl-test-boundary" },
+      payload: multipartPayload("ecl-test-boundary", [
+        { name: "name", value: "missing file" }
+      ])
+    });
+    expect(missingFile.statusCode).toBe(422);
+    expect(missingFile.json()).toMatchObject({ error: "upload_file_required" });
+
+    const nonMultipart = await app.inject({
+      method: "POST",
+      url: "/api/sources/upload",
+      headers: authHeaders,
+      payload: { name: "not multipart" }
+    });
+    expect(nonMultipart.statusCode).toBe(400);
+    expect(nonMultipart.json()).toMatchObject({ error: "multipart_required" });
+
+    const tooLarge = await uploadSource({
+      name: "too-large",
+      fileName: "too-large.env",
+      content: `TOKEN=${"x".repeat(1024 * 1024)}`
+    });
+    expect(tooLarge.statusCode).toBe(413);
+    expect(tooLarge.json()).toMatchObject({ error: "upload_file_too_large" });
+  });
+
+  it("keeps mixed local and uploaded source ordering and enabled state stable", async () => {
+    const local = await createSource("local", "/tmp/local.env");
+    const upload = await uploadSource({ name: "uploaded", fileName: "uploaded.env", content: "TOKEN=value\n" });
+    const uploaded = upload.json().source as { id: string };
+
+    const reorder = await app.inject({
+      method: "POST",
+      url: "/api/sources/reorder",
+      headers: authHeaders,
+      payload: { sourceIds: [uploaded.id, local.id] }
+    });
+    expect(reorder.statusCode).toBe(200);
+    expect(reorder.json().sources.map((source: { name: string; displayOrder: number }) => [source.name, source.displayOrder])).toEqual([
+      ["uploaded", 1],
+      ["local", 2]
+    ]);
+
+    const update = await app.inject({
+      method: "PATCH",
+      url: `/api/sources/${uploaded.id}`,
+      headers: authHeaders,
+      payload: { enabled: false, name: "uploaded-disabled", note: "temporary memory source", filePath: "/tmp/ignored.env" }
+    });
+    expect(update.statusCode).toBe(200);
+    expect(update.json().source).toMatchObject({
+      id: uploaded.id,
+      type: "uploaded-file",
+      name: "uploaded-disabled",
+      enabled: false,
+      note: "temporary memory source",
+      uploadedFile: { fileName: "uploaded.env" }
+    });
+    expect(update.json().source.localFile).toBeUndefined();
+  });
+});
+
 async function createSource(name: string, filePath: string) {
   const response = await app.inject({
     method: "POST",
@@ -267,4 +455,40 @@ async function createSource(name: string, filePath: string) {
   });
   expect(response.statusCode).toBe(201);
   return response.json().source as { id: string };
+}
+
+function uploadSource(input: { name: string; fileName: string; content: string; enabled?: boolean; note?: string }) {
+  const boundary = `ecl-test-${Math.random().toString(16).slice(2)}`;
+  return app.inject({
+    method: "POST",
+    url: "/api/sources/upload",
+    headers: { ...authHeaders, "content-type": `multipart/form-data; boundary=${boundary}` },
+    payload: multipartPayload(boundary, [
+      { name: "name", value: input.name },
+      { name: "enabled", value: String(input.enabled ?? true) },
+      { name: "note", value: input.note ?? "" },
+      { name: "file", fileName: input.fileName, value: input.content }
+    ])
+  });
+}
+
+function multipartPayload(
+  boundary: string,
+  parts: Array<{ name: string; value: string; fileName?: string }>
+) {
+  const lines: string[] = [];
+  parts.forEach((part) => {
+    lines.push(`--${boundary}`);
+    if (part.fileName) {
+      lines.push(`Content-Disposition: form-data; name="${part.name}"; filename="${part.fileName}"`);
+      lines.push("Content-Type: text/plain");
+    } else {
+      lines.push(`Content-Disposition: form-data; name="${part.name}"`);
+    }
+    lines.push("");
+    lines.push(part.value);
+  });
+  lines.push(`--${boundary}--`);
+  lines.push("");
+  return lines.join("\r\n");
 }

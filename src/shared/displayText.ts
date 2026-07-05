@@ -19,7 +19,8 @@ export const healthIssueLabels = {
 
 export const sourceTypeLabels = {
   "local-file": "本地文件",
-  "ssh-remote-file": "SSH 远程文件"
+  "ssh-remote-file": "SSH 远程文件",
+  "uploaded-file": "上传文件"
 } satisfies Record<SourceType, string>;
 
 export const sourceErrorLabels = {
@@ -34,11 +35,13 @@ export const sourceErrorLabels = {
 } satisfies Record<SourceErrorType, string>;
 
 export const apiErrorMessages = {
-  local_origin_required: "只允许本地 UI 来源访问。",
   session_token_required: "需要有效的启动会话令牌。",
   internal_error: "请求未能完成。",
   source_not_found: "未找到来源。",
   invalid_ssh_source: "SSH 来源配置无效。",
   unsupported_source_type: "不支持的来源类型。",
+  multipart_required: "请使用文件上传表单提交 .env 文件。",
+  upload_file_required: "请选择要上传的 .env 文件。",
+  upload_file_too_large: "上传的 .env 文件不能超过 1MB。",
   empty_json_body: "请求体不能为空。"
 } satisfies Record<string, string>;

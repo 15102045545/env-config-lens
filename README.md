@@ -8,7 +8,7 @@ The tool is designed for developers and technical leads who need to inspect conf
 
 This repository now contains the M1 local foundation and M2 SSH remote source implementation:
 
-- Fastify local service bound to `127.0.0.1`.
+- Fastify service bound to `0.0.0.0` by default for same-LAN access.
 - Startup session token required for `/api/*`.
 - React/Vite/Tailwind local GUI with Comparison, Health, and Settings.
 - SQLite source settings persistence through Node built-in SQLite.
@@ -36,9 +36,9 @@ Implementation is split into milestone PRDs:
 - macOS first.
 - M1 ships the local-file-only foundation implemented in this repository.
 - M2 adds SSH remote file sources through system OpenSSH and macOS Keychain references.
-- Local service binds only to `127.0.0.1`.
-- Startup session token required for frontend API calls.
-- CORS restricted to the local UI origin.
+- Local service listens on the LAN by default and can be forced back to `127.0.0.1` with `ENV_CONFIG_LENS_HOST`.
+- Startup session token required for frontend API calls and API access.
+- API access is token-gated; CORS preflight is allowed for browser clients.
 - Local file env sources.
 - SSH remote file env sources are planned for M2.
 - Settings persisted locally in SQLite.
@@ -90,12 +90,13 @@ pnpm install
 pnpm start
 ```
 
-`pnpm start` builds the Web UI, starts the local service on `127.0.0.1:4173` by default, generates a startup token, prints the local URL, and opens the browser automatically.
+`pnpm start` builds the Web UI, starts the service on `0.0.0.0:4173` by default, generates a startup token, prints both the local URL and available LAN URLs, and opens the local browser URL automatically.
 
 Useful environment variables:
 
 ```bash
 PORT=4180 pnpm start
+ENV_CONFIG_LENS_HOST=127.0.0.1 pnpm start
 ENV_CONFIG_LENS_DATA_DIR=.local/dev-data pnpm start
 ```
 
@@ -110,7 +111,7 @@ pnpm seed:local
 
 - `pnpm test` runs parser, comparison, SQLite, seed, API security, SSH, binding, and UI tests.
 - `pnpm build` builds the frontend and runs TypeScript checks.
-- `pnpm verify:binding` starts a temporary service and confirms it listens on `127.0.0.1`.
+- `pnpm verify:binding` starts a temporary service and confirms it listens on `0.0.0.0`.
 - `pnpm seed:local` imports local source settings from `.local/env-sources.local.json`.
 
 ## UI

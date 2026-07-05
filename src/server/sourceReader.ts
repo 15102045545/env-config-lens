@@ -11,6 +11,10 @@ export interface SourceTestResult {
   errorMessage?: string;
 }
 
+export interface SourceReadContext {
+  readUploadedSourceContent?: (sourceId: string) => string | undefined;
+}
+
 const emptyHealthSummary: Record<HealthIssueType, number> = {
   duplicate_key: 0,
   parse_failure: 0,
@@ -20,12 +24,12 @@ const emptyHealthSummary: Record<HealthIssueType, number> = {
   illegal_key_name: 0
 };
 
-export async function readSourceForComparison(source: EnvSource): Promise<EnvSourceReadResult> {
+export async function readSourceForComparison(source: EnvSource, context: SourceReadContext = {}): Promise<EnvSourceReadResult> {
   if (!canReadSource(source)) {
     return failedRead(source, "unsupported_source", "暂不支持此来源类型。");
   }
 
-  const content = await readSourceContent(source);
+  const content = await readSourceContent(source, context);
   if (!content.ok) {
     return failedRead(source, content.errorType, content.errorMessage);
   }
@@ -44,8 +48,8 @@ export async function readSourceForComparison(source: EnvSource): Promise<EnvSou
   };
 }
 
-export async function testSourceReadability(source: EnvSource): Promise<SourceTestResult> {
-  const result = await readSourceForComparison(source);
+export async function testSourceReadability(source: EnvSource, context: SourceReadContext = {}): Promise<SourceTestResult> {
+  const result = await readSourceForComparison(source, context);
   if (result.status === "success") {
     return {
       sourceId: source.id,
@@ -63,12 +67,12 @@ export async function testSourceReadability(source: EnvSource): Promise<SourceTe
   };
 }
 
-export async function readSourceRawContent(source: EnvSource): Promise<EnvSourceContentResult> {
+export async function readSourceRawContent(source: EnvSource, context: SourceReadContext = {}): Promise<EnvSourceContentResult> {
   if (!canReadSource(source)) {
     return failedRawContent(source, "unsupported_source", "暂不支持此来源类型。");
   }
 
-  const content = await readSourceContent(source);
+  const content = await readSourceContent(source, context);
   if (!content.ok) {
     return failedRawContent(source, content.errorType, content.errorMessage);
   }
@@ -81,12 +85,12 @@ export async function readSourceRawContent(source: EnvSource): Promise<EnvSource
   };
 }
 
-export async function readSourceHealth(source: EnvSource): Promise<EnvHealthResult> {
+export async function readSourceHealth(source: EnvSource, context: SourceReadContext = {}): Promise<EnvHealthResult> {
   if (!canReadSource(source)) {
     return failedHealth(source, "unsupported_source", "暂不支持此来源类型。");
   }
 
-  const content = await readSourceContent(source);
+  const content = await readSourceContent(source, context);
   if (!content.ok) {
     return failedHealth(source, content.errorType, content.errorMessage);
   }
@@ -114,10 +118,19 @@ export async function readSourceHealth(source: EnvSource): Promise<EnvHealthResu
 }
 
 async function readSourceContent(
-  source: EnvSource
+  source: EnvSource,
+  context: SourceReadContext
 ): Promise<{ ok: true; content: string } | { ok: false; errorType: SourceErrorType; errorMessage: string }> {
   if (source.type === "ssh-remote-file") {
     return readSshRemoteEnvFile(source);
+  }
+
+  if (source.type === "uploaded-file") {
+    const content = context.readUploadedSourceContent?.(source.id);
+    if (content === undefined) {
+      return { ok: false, errorType: "read_failed", errorMessage: "上传来源只保存在本次服务进程内，请重新上传。" };
+    }
+    return { ok: true, content };
   }
 
   try {
@@ -129,7 +142,11 @@ async function readSourceContent(
 }
 
 function canReadSource(source: EnvSource) {
-  return (source.type === "local-file" && source.localFile) || (source.type === "ssh-remote-file" && source.sshRemoteFile);
+  return (
+    (source.type === "local-file" && source.localFile) ||
+    (source.type === "ssh-remote-file" && source.sshRemoteFile) ||
+    (source.type === "uploaded-file" && source.uploadedFile)
+  );
 }
 
 function failedRead(source: EnvSource, errorType: SourceErrorType, errorMessage: string): EnvSourceReadResult {

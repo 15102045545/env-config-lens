@@ -1,4 +1,4 @@
-export type SourceType = "local-file" | "ssh-remote-file";
+export type SourceType = "local-file" | "ssh-remote-file" | "uploaded-file";
 
 export type ComparisonStatus = "missing" | "same" | "different" | "empty" | "source-only";
 
@@ -41,6 +41,11 @@ export interface EnvSource {
     filePath: string;
   };
   sshRemoteFile?: SshRemoteFileConfig;
+  uploadedFile?: {
+    fileName: string;
+    sizeBytes: number;
+    uploadedAt: string;
+  };
 }
 
 export interface EnvSourceReadResult {
