@@ -13,7 +13,7 @@ vi.mock("./sourceReader", () => ({
     status: "failed",
     keyCount: 0,
     errorType: "auth_failed",
-    errorMessage: "SSH authentication failed. Check the username, key, agent, and Keychain reference."
+    errorMessage: "SSH 认证失败。请检查用户名、密钥、agent 和 Keychain 引用。"
   })),
   readSourceForComparison: vi.fn(async (source: EnvSource) => {
     if (source.type === "ssh-remote-file") {
@@ -23,7 +23,7 @@ vi.mock("./sourceReader", () => ({
         status: "failed",
         keyCount: 0,
         errorType: "auth_failed",
-        errorMessage: "SSH authentication failed. Check the username, key, agent, and Keychain reference."
+        errorMessage: "SSH 认证失败。请检查用户名、密钥、agent 和 Keychain 引用。"
       };
     }
     return {
@@ -50,7 +50,7 @@ vi.mock("./sourceReader", () => ({
       illegal_key_name: 0
     },
     errorType: "auth_failed",
-    errorMessage: "SSH authentication failed. Check the username, key, agent, and Keychain reference."
+    errorMessage: "SSH 认证失败。请检查用户名、密钥、agent 和 Keychain 引用。"
   })),
   readSourceRawContent: vi.fn(async (source: EnvSource) => {
     if (source.name === "prod-api-readable") {
@@ -66,7 +66,7 @@ vi.mock("./sourceReader", () => ({
       sourceName: source.name,
       status: "failed",
       errorType: "auth_failed",
-      errorMessage: "SSH authentication failed. Check the username, key, agent, and Keychain reference."
+      errorMessage: "SSH 认证失败。请检查用户名、密钥、agent 和 Keychain 引用。"
     };
   })
 }));
@@ -167,7 +167,10 @@ describe("SSH source API workflow", () => {
     });
 
     expect(response.statusCode).toBe(422);
-    expect(response.json()).toEqual({ error: "invalid_ssh_source" });
+    expect(response.json()).toEqual({
+      error: "invalid_ssh_source",
+      message: "SSH 来源配置无效。"
+    });
   });
 
   it("tests SSH readability through the API without returning env contents", async () => {
@@ -185,7 +188,7 @@ describe("SSH source API workflow", () => {
       status: "failed",
       keyCount: 0,
       errorType: "auth_failed",
-      errorMessage: "SSH authentication failed. Check the username, key, agent, and Keychain reference."
+      errorMessage: "SSH 认证失败。请检查用户名、密钥、agent 和 Keychain 引用。"
     });
     expect(response.body).not.toContain("ECL_SENTINEL_REMOTE_ENV_VALUE_93F7");
   });
@@ -255,7 +258,7 @@ describe("SSH source API workflow", () => {
       sourceName: "prod-api",
       status: "failed",
       errorType: "auth_failed",
-      errorMessage: "SSH authentication failed. Check the username, key, agent, and Keychain reference."
+      errorMessage: "SSH 认证失败。请检查用户名、密钥、agent 和 Keychain 引用。"
     });
     expect(response.body).not.toContain("ECL_SENTINEL_REMOTE_ENV_VALUE_93F7");
   });

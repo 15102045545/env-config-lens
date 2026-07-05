@@ -12,7 +12,7 @@ describe("parseEnvContent", () => {
       key: "DUP",
       duplicateCount: 3,
       finalEffectiveValue: "third",
-      message: "Duplicate key DUP appears 3 times. Last assignment wins."
+      message: "重复键 DUP 出现 3 次，最终以最后一次赋值为准。"
     });
   });
 
@@ -62,7 +62,7 @@ describe("parseEnvContent", () => {
       type: "parse_failure",
       severity: "error",
       key: "BROKEN",
-      message: "Line 2 has an unterminated quoted value."
+      message: "第 2 行存在未闭合的引号值。"
     });
     expect(JSON.stringify(result.issues)).not.toContain("unterminated\nANOTHER");
   });

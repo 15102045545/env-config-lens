@@ -22,7 +22,7 @@ const emptyHealthSummary: Record<HealthIssueType, number> = {
 
 export async function readSourceForComparison(source: EnvSource): Promise<EnvSourceReadResult> {
   if (!canReadSource(source)) {
-    return failedRead(source, "unsupported_source", "Source type is not supported.");
+    return failedRead(source, "unsupported_source", "暂不支持此来源类型。");
   }
 
   const content = await readSourceContent(source);
@@ -32,7 +32,7 @@ export async function readSourceForComparison(source: EnvSource): Promise<EnvSou
 
   const parsed = parseEnvContent(content.content);
   if (parsed.parseFailures.length > 0) {
-    return failedRead(source, "parse_failed", `Source has ${parsed.parseFailures.length} parse failure(s).`);
+    return failedRead(source, "parse_failed", `来源存在 ${parsed.parseFailures.length} 个解析失败。`);
   }
 
   return {
@@ -65,7 +65,7 @@ export async function testSourceReadability(source: EnvSource): Promise<SourceTe
 
 export async function readSourceRawContent(source: EnvSource): Promise<EnvSourceContentResult> {
   if (!canReadSource(source)) {
-    return failedRawContent(source, "unsupported_source", "Source type is not supported.");
+    return failedRawContent(source, "unsupported_source", "暂不支持此来源类型。");
   }
 
   const content = await readSourceContent(source);
@@ -83,7 +83,7 @@ export async function readSourceRawContent(source: EnvSource): Promise<EnvSource
 
 export async function readSourceHealth(source: EnvSource): Promise<EnvHealthResult> {
   if (!canReadSource(source)) {
-    return failedHealth(source, "unsupported_source", "Source type is not supported.");
+    return failedHealth(source, "unsupported_source", "暂不支持此来源类型。");
   }
 
   const content = await readSourceContent(source);
@@ -108,7 +108,7 @@ export async function readSourceHealth(source: EnvSource): Promise<EnvHealthResu
     errorType: parsed.parseFailures.length > 0 ? "parse_failed" : undefined,
     errorMessage:
       parsed.parseFailures.length > 0
-        ? `Source has ${parsed.parseFailures.length} parse failure(s).`
+        ? `来源存在 ${parsed.parseFailures.length} 个解析失败。`
         : undefined
   };
 }
@@ -170,10 +170,10 @@ function failedHealth(source: EnvSource, errorType: SourceErrorType, errorMessag
 function mapFileReadError(error: unknown): { errorType: SourceErrorType; errorMessage: string } {
   const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
   if (code === "ENOENT") {
-    return { errorType: "path_not_found", errorMessage: "Local file path was not found." };
+    return { errorType: "path_not_found", errorMessage: "本地文件路径不存在。" };
   }
   if (code === "EACCES" || code === "EPERM") {
-    return { errorType: "permission_denied", errorMessage: "Local file is not readable by this user." };
+    return { errorType: "permission_denied", errorMessage: "本地文件当前用户无读取权限。" };
   }
-  return { errorType: "read_failed", errorMessage: "Local file could not be read." };
+  return { errorType: "read_failed", errorMessage: "本地文件读取失败。" };
 }

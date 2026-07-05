@@ -34,7 +34,10 @@ describe("local API security", () => {
     const response = await app.inject({ method: "GET", url: "/api/sources", headers: { origin: uiOrigin } });
 
     expect(response.statusCode).toBe(401);
-    expect(response.json()).toEqual({ error: "session_token_required" });
+    expect(response.json()).toEqual({
+      error: "session_token_required",
+      message: "需要有效的启动会话令牌。"
+    });
   });
 
   it("rejects API requests from a non-local UI origin", async () => {
@@ -48,7 +51,10 @@ describe("local API security", () => {
     });
 
     expect(response.statusCode).toBe(403);
-    expect(response.json()).toEqual({ error: "local_origin_required" });
+    expect(response.json()).toEqual({
+      error: "local_origin_required",
+      message: "只允许本地 UI 来源访问。"
+    });
   });
 
   it("reports the local runtime boundary", async () => {
@@ -219,7 +225,10 @@ describe("local source workflow", () => {
     });
 
     expect(response.statusCode).toBe(404);
-    expect(response.json()).toEqual({ error: "source_not_found" });
+    expect(response.json()).toEqual({
+      error: "source_not_found",
+      message: "未找到来源。"
+    });
   });
 
   it("returns sanitized local raw content read failures without env contents", async () => {
@@ -237,7 +246,7 @@ describe("local source workflow", () => {
       sourceName: "missing",
       status: "failed",
       errorType: "path_not_found",
-      errorMessage: "Local file path was not found."
+      errorMessage: "本地文件路径不存在。"
     });
     expect(response.body).not.toContain("TOKEN=");
   });

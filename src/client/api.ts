@@ -1,4 +1,5 @@
-import type { EnvComparisonResult, EnvHealthResult, EnvSource, EnvSourceContentResult, SshRemoteFileConfig } from "../shared/types";
+import type { EnvComparisonResult, EnvHealthResult, EnvSource, EnvSourceContentResult, SourceErrorType, SshRemoteFileConfig } from "../shared/types";
+import { apiErrorMessages } from "../shared/displayText";
 
 export interface RuntimeBoundary {
   bindHost: string;
@@ -60,7 +61,7 @@ export class ApiClient {
   }
 
   testSource(sourceId: string) {
-    return this.request<{ sourceId: string; status: "success" | "failed"; keyCount: number; errorType?: string }>(
+    return this.request<{ sourceId: string; status: "success" | "failed"; keyCount: number; errorType?: SourceErrorType }>(
       `/api/sources/${sourceId}/test`,
       { method: "POST" }
     );
@@ -110,7 +111,7 @@ export class ApiClient {
 
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      throw new Error(body.error ?? `Request failed with ${response.status}`);
+      throw new Error(messageForFailedRequest(body, response.status));
     }
 
     if (response.status === 204) {
@@ -119,6 +120,30 @@ export class ApiClient {
 
     return (await response.json()) as T;
   }
+}
+
+function messageForFailedRequest(body: unknown, status: number) {
+  if (body && typeof body === "object") {
+    const record = body as Record<string, unknown>;
+    if (typeof record.message === "string" && record.message.trim()) {
+      return record.message;
+    }
+    const fallback = apiErrorMessageFor(record.error);
+    if (fallback) {
+      return fallback;
+    }
+    if (typeof record.error === "string" && record.error.trim()) {
+      return record.error;
+    }
+  }
+  return `请求失败，状态码 ${status}`;
+}
+
+function apiErrorMessageFor(error: unknown) {
+  if (typeof error === "string" && Object.hasOwn(apiErrorMessages, error)) {
+    return apiErrorMessages[error as keyof typeof apiErrorMessages];
+  }
+  return undefined;
 }
 
 export function readStartupToken() {

@@ -36,7 +36,7 @@ export async function importLocalSeed({ seedPath, store, log = console.log }: Im
     imported += 1;
   }
 
-  log(`Imported ${imported} local source setting${imported === 1 ? "" : "s"}.`);
+  log(`已导入 ${imported} 个本地来源设置。`);
   return imported;
 }
 

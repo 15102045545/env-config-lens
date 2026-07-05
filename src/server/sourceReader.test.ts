@@ -54,7 +54,7 @@ describe("sourceReader SSH integration", () => {
     readSshRemoteEnvFileMock.mockResolvedValue({
       ok: false,
       errorType: "auth_failed",
-      errorMessage: "SSH authentication failed. Check the username, key, agent, and Keychain reference."
+      errorMessage: "SSH 认证失败。请检查用户名、密钥、agent 和 Keychain 引用。"
     });
 
     const result = await readSourceForComparison(sshSource());
@@ -65,7 +65,7 @@ describe("sourceReader SSH integration", () => {
       status: "failed",
       keyCount: 0,
       errorType: "auth_failed",
-      errorMessage: "SSH authentication failed. Check the username, key, agent, and Keychain reference."
+      errorMessage: "SSH 认证失败。请检查用户名、密钥、agent 和 Keychain 引用。"
     });
   });
 });

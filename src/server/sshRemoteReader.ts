@@ -25,7 +25,7 @@ const defaultTimeoutMs = 15_000;
 
 export function buildSshReadCommand(source: EnvSource): SshReadCommand {
   if (source.type !== "ssh-remote-file" || !source.sshRemoteFile) {
-    throw new Error("SSH source configuration is required.");
+    throw new Error("SSH 来源配置不能为空。");
   }
 
   const ssh = validateSshConfig(source.sshRemoteFile);
@@ -76,10 +76,10 @@ export function buildSshReadCommand(source: EnvSource): SshReadCommand {
 
 export function quoteRemoteShellArg(value: string) {
   if (value.includes("\0")) {
-    throw new Error("remoteEnvPath cannot contain NUL bytes.");
+    throw new Error("remoteEnvPath 不能包含 NUL 字节。");
   }
   if (/[\r\n]/.test(value)) {
-    throw new Error("remoteEnvPath cannot contain newline characters.");
+    throw new Error("remoteEnvPath 不能包含换行符。");
   }
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
@@ -90,7 +90,7 @@ export function classifySshFailure(stderr: string, stdout = ""): { errorType: So
   if (/permission denied \(publickey|authentication failed|too many authentication failures|no mutual signature|bad passphrase/.test(text)) {
     return {
       errorType: "auth_failed",
-      errorMessage: "SSH authentication failed. Check the username, key, agent, and Keychain reference."
+      errorMessage: "SSH 认证失败。请检查用户名、密钥、agent 和 Keychain 引用。"
     };
   }
 
@@ -101,22 +101,22 @@ export function classifySshFailure(stderr: string, stdout = ""): { errorType: So
   ) {
     return {
       errorType: "connection_failed",
-      errorMessage: "SSH connection failed. Check the host, port, network, and SSH config."
+      errorMessage: "SSH 连接失败。请检查主机、端口、网络和 SSH 配置。"
     };
   }
 
   if (/no such file or directory|not found/.test(text)) {
-    return { errorType: "path_not_found", errorMessage: "Remote env file path was not found." };
+    return { errorType: "path_not_found", errorMessage: "远程 .env 文件路径不存在。" };
   }
 
   if (/permission denied/.test(text)) {
     return {
       errorType: "permission_denied",
-      errorMessage: "Remote env file is not readable by the configured SSH user."
+      errorMessage: "远程 .env 文件当前 SSH 用户无读取权限。"
     };
   }
 
-  return { errorType: "unknown_error", errorMessage: "SSH read failed. Check the source settings." };
+  return { errorType: "unknown_error", errorMessage: "SSH 读取失败。请检查来源设置。" };
 }
 
 export async function readSshRemoteEnvFile(
@@ -148,7 +148,7 @@ function validateSshConfig(input: SshRemoteFileConfig): SshRemoteFileConfig {
     validatePlainToken(input.username ?? "", "username");
     validatePlainToken(input.privateKeyPath ?? "", "privateKeyPath");
     if (!Number.isInteger(input.port) || (input.port as number) < 1 || (input.port as number) > 65535) {
-      throw new Error("port must be between 1 and 65535.");
+      throw new Error("端口必须介于 1 到 65535 之间。");
     }
     return input;
   }
@@ -159,20 +159,20 @@ function validateSshConfig(input: SshRemoteFileConfig): SshRemoteFileConfig {
 
 function validateRemotePath(value: string) {
   if (!value || !value.trim()) {
-    throw new Error("remoteEnvPath is required.");
+    throw new Error("remoteEnvPath 不能为空。");
   }
   quoteRemoteShellArg(value);
 }
 
 function validatePlainToken(value: string, field: string) {
   if (!value || !value.trim()) {
-    throw new Error(`${field} is required.`);
+    throw new Error(`${field} 不能为空。`);
   }
   if (value.startsWith("-")) {
-    throw new Error(`${field} cannot start with a dash.`);
+    throw new Error(`${field} 不能以短横线开头。`);
   }
   if (/[\0\r\n]/.test(value)) {
-    throw new Error(`${field} cannot contain control characters.`);
+    throw new Error(`${field} 不能包含控制字符。`);
   }
 }
 

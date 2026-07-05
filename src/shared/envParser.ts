@@ -25,7 +25,7 @@ export function parseEnvContent(content: string): ParsedEnvContent {
     const assignment = trimmed.startsWith("export ") ? trimmed.slice("export ".length).trimStart() : line;
     const equalsIndex = assignment.indexOf("=");
     if (equalsIndex === -1) {
-      pushParseFailure(issues, parseFailures, undefined, `Line ${lineNumber} is not a key/value assignment.`);
+      pushParseFailure(issues, parseFailures, undefined, `第 ${lineNumber} 行不是 key/value 赋值。`);
       return;
     }
 
@@ -34,7 +34,7 @@ export function parseEnvContent(content: string): ParsedEnvContent {
       issues.push({
         type: "empty_key",
         severity: "error",
-        message: `Line ${lineNumber} has an assignment without a key.`
+        message: `第 ${lineNumber} 行存在没有 key 的赋值。`
       });
       return;
     }
@@ -44,7 +44,7 @@ export function parseEnvContent(content: string): ParsedEnvContent {
         type: "illegal_key_name",
         severity: "error",
         key,
-        message: `Key ${key} does not match [A-Za-z_][A-Za-z0-9_]*.`
+        message: `键 ${key} 不符合 [A-Za-z_][A-Za-z0-9_]*。`
       });
       return;
     }
@@ -63,14 +63,14 @@ export function parseEnvContent(content: string): ParsedEnvContent {
         type: "empty_value",
         severity: "warning",
         key,
-        message: `Key ${key} has an empty value.`
+        message: `键 ${key} 为空值。`
       });
     } else if (parsedValue.value.trim() === "") {
       issues.push({
         type: "whitespace_only_value",
         severity: "warning",
         key,
-        message: `Key ${key} has a whitespace-only value.`
+        message: `键 ${key} 仅包含空白字符。`
       });
     }
   });
@@ -83,7 +83,7 @@ export function parseEnvContent(content: string): ParsedEnvContent {
         key,
         duplicateCount: count,
         finalEffectiveValue: values[key],
-        message: `Duplicate key ${key} appears ${count} times. Last assignment wins.`
+        message: `重复键 ${key} 出现 ${count} 次，最终以最后一次赋值为准。`
       });
     }
   }
@@ -105,12 +105,12 @@ function parseValue(rawValue: string, lineNumber: number, key: string): ParsedVa
   if (quote === "'" || quote === '"') {
     const parsed = readQuotedValue(valueSource, quote);
     if (!parsed) {
-      return { ok: false, message: `Line ${lineNumber} has an unterminated quoted value.` };
+      return { ok: false, message: `第 ${lineNumber} 行存在未闭合的引号值。` };
     }
 
     const trailing = valueSource.slice(parsed.endIndex + 1).trim();
     if (trailing && !trailing.startsWith("#")) {
-      return { ok: false, message: `Line ${lineNumber} has unexpected text after ${key}.` };
+      return { ok: false, message: `第 ${lineNumber} 行在 ${key} 后存在多余文本。` };
     }
 
     return { ok: true, value: parsed.value };

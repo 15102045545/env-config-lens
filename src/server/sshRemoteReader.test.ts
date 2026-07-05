@@ -58,7 +58,7 @@ describe("sshRemoteReader", () => {
 
   it("quotes remote paths so path text cannot become another remote command", () => {
     expect(quoteRemoteShellArg("/srv/app/a'; rm -rf / #.env")).toBe("'/srv/app/a'\\''; rm -rf / #.env'");
-    expect(() => quoteRemoteShellArg("/srv/app/.env\nTOKEN=value")).toThrow("remoteEnvPath cannot contain newline");
+    expect(() => quoteRemoteShellArg("/srv/app/.env\nTOKEN=value")).toThrow("remoteEnvPath 不能包含换行符。");
   });
 
   it("classifies SSH failures without returning stderr content", () => {
@@ -66,19 +66,19 @@ describe("sshRemoteReader", () => {
 
     expect(classifySshFailure("ssh: Could not resolve hostname prod: nodename nor servname provided", sentinel)).toEqual({
       errorType: "connection_failed",
-      errorMessage: "SSH connection failed. Check the host, port, network, and SSH config."
+      errorMessage: "SSH 连接失败。请检查主机、端口、网络和 SSH 配置。"
     });
     expect(classifySshFailure("Permission denied (publickey).", sentinel)).toEqual({
       errorType: "auth_failed",
-      errorMessage: "SSH authentication failed. Check the username, key, agent, and Keychain reference."
+      errorMessage: "SSH 认证失败。请检查用户名、密钥、agent 和 Keychain 引用。"
     });
     expect(classifySshFailure("cat: /srv/app/.env: Permission denied", sentinel)).toEqual({
       errorType: "permission_denied",
-      errorMessage: "Remote env file is not readable by the configured SSH user."
+      errorMessage: "远程 .env 文件当前 SSH 用户无读取权限。"
     });
     expect(classifySshFailure(`cat: /srv/app/.env: No such file or directory\n${sentinel}`, sentinel)).toEqual({
       errorType: "path_not_found",
-      errorMessage: "Remote env file path was not found."
+      errorMessage: "远程 .env 文件路径不存在。"
     });
   });
 
@@ -98,7 +98,7 @@ describe("sshRemoteReader", () => {
     expect(failure).toEqual({
       ok: false,
       errorType: "path_not_found",
-      errorMessage: "Remote env file path was not found."
+      errorMessage: "远程 .env 文件路径不存在。"
     });
     expect(JSON.stringify(failure)).not.toContain("ECL_SENTINEL_REMOTE_ENV_VALUE_93F7");
   });

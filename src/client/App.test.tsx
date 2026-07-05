@@ -32,7 +32,7 @@ beforeEach(() => {
       sourceName: "Local prod",
       status: "failed",
       errorType: "path_not_found",
-      errorMessage: "Local file path was not found."
+      errorMessage: "本地文件路径不存在。"
     }
   };
   Object.assign(navigator, {
@@ -103,7 +103,7 @@ describe("App", () => {
     expect(await screen.findByText("DATABASE_URL")).toBeInTheDocument();
     expect(screen.queryByText("NODE_ENV")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Same" }));
+    await userEvent.click(screen.getByRole("button", { name: "一致" }));
 
     expect(await screen.findByText("NODE_ENV")).toBeInTheDocument();
     expect(screen.queryByText("DATABASE_URL")).not.toBeInTheDocument();
@@ -115,10 +115,10 @@ describe("App", () => {
     const longValue = await screen.findByTestId("value-JWT_PUBLIC_KEY-local-dev");
     expect(longValue).toHaveClass("line-clamp-2");
 
-    await userEvent.click(screen.getByRole("button", { name: "Expand JWT_PUBLIC_KEY from Local dev" }));
+    await userEvent.click(screen.getByRole("button", { name: "展开 Local dev 的 JWT_PUBLIC_KEY" }));
     expect(longValue).not.toHaveClass("line-clamp-2");
 
-    await userEvent.click(screen.getByRole("button", { name: "Copy JWT_PUBLIC_KEY from Local dev" }));
+    await userEvent.click(screen.getByRole("button", { name: "复制 Local dev 的 JWT_PUBLIC_KEY" }));
     await waitFor(() => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining("BEGIN PUBLIC KEY"));
     });
@@ -129,8 +129,8 @@ describe("App", () => {
     render(<App />);
 
     await screen.findByRole("button", { name: "Local dev" });
-    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Delete Local dev" }));
+    await userEvent.click(screen.getByRole("button", { name: "设置" }));
+    await userEvent.click(await screen.findByRole("button", { name: "删除 Local dev" }));
 
     await waitFor(() => {
       expect(screen.queryByText("Local dev")).not.toBeInTheDocument();
@@ -142,17 +142,17 @@ describe("App", () => {
     render(<App />);
 
     await screen.findByText("DATABASE_URL");
-    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
-    await userEvent.click(screen.getByRole("button", { name: "SSH alias" }));
-    await userEvent.type(screen.getByLabelText("Source name"), "Prod SSH");
-    await userEvent.type(screen.getByLabelText("SSH alias"), "prod-api");
-    await userEvent.type(screen.getByLabelText("Remote env path"), "/srv/app/.env");
-    await userEvent.type(screen.getByLabelText("Keychain service"), "Env Config Lens");
-    await userEvent.type(screen.getByLabelText("Keychain account"), "prod-api key");
-    await userEvent.click(screen.getByRole("button", { name: "Add SSH source" }));
+    await userEvent.click(screen.getByRole("button", { name: "设置" }));
+    await userEvent.click(screen.getByRole("button", { name: "SSH 别名" }));
+    await userEvent.type(screen.getByLabelText("来源名称"), "Prod SSH");
+    await userEvent.type(screen.getByLabelText("SSH 别名"), "prod-api");
+    await userEvent.type(screen.getByLabelText("远程 .env 路径"), "/srv/app/.env");
+    await userEvent.type(screen.getByLabelText("Keychain 服务"), "Env Config Lens");
+    await userEvent.type(screen.getByLabelText("Keychain 账户"), "prod-api key");
+    await userEvent.click(screen.getByRole("button", { name: "添加 SSH 来源" }));
 
     await screen.findByText("Prod SSH");
-    expect(screen.getByText("ssh-remote-file")).toBeInTheDocument();
+    expect(screen.getByText("SSH 远程文件")).toBeInTheDocument();
     const createCall = vi.mocked(fetch).mock.calls.find((call) => String(call[0]).endsWith("/api/sources") && call[1]?.method === "POST");
     expect(createCall).toBeTruthy();
     const sentBody = JSON.parse(String(createCall?.[1]?.body));
@@ -174,11 +174,11 @@ describe("App", () => {
     render(<App />);
 
     await screen.findByText("DATABASE_URL");
-    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
-    await userEvent.click(screen.getByRole("button", { name: "SSH standard" }));
-    await userEvent.click(screen.getByRole("button", { name: "Pick key" }));
+    await userEvent.click(screen.getByRole("button", { name: "设置" }));
+    await userEvent.click(screen.getByRole("button", { name: "SSH 标准" }));
+    await userEvent.click(screen.getByRole("button", { name: "选择密钥" }));
 
-    expect(screen.getByLabelText("Private key path")).toHaveValue("/Users/example/.ssh/id_ed25519");
+    expect(screen.getByLabelText("私钥路径")).toHaveValue("/Users/example/.ssh/id_ed25519");
   });
 
   it("shows source-level SSH failures in comparison and health views", async () => {
@@ -196,27 +196,28 @@ describe("App", () => {
     render(<App />);
 
     expect((await screen.findAllByText("Prod SSH")).length).toBeGreaterThan(0);
-    expect(screen.getByText("auth_failed")).toBeInTheDocument();
-    expect(screen.getByText("SSH authentication failed. Check the username, key, agent, and Keychain reference.")).toBeInTheDocument();
+    expect(screen.getByText("认证失败")).toBeInTheDocument();
+    expect(screen.queryByText("auth_failed")).not.toBeInTheDocument();
+    expect(screen.getByText("SSH 认证失败。请检查用户名、密钥、agent 和 Keychain 引用。")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Health" }));
-    await userEvent.selectOptions(screen.getByLabelText("Source"), "ssh-prod");
+    await userEvent.click(screen.getByRole("button", { name: "健康" }));
+    await userEvent.selectOptions(screen.getByLabelText("来源"), "ssh-prod");
 
-    expect(await screen.findByText("Source read failed")).toBeInTheDocument();
-    expect(screen.getByText("SSH authentication failed. Check the username, key, agent, and Keychain reference.")).toBeInTheDocument();
+    expect(await screen.findByText("来源读取失败")).toBeInTheDocument();
+    expect(screen.getByText("SSH 认证失败。请检查用户名、密钥、agent 和 Keychain 引用。")).toBeInTheDocument();
   });
 
   it("opens a read-only raw env viewer from Settings", async () => {
     render(<App />);
 
     await screen.findByText("DATABASE_URL");
-    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
-    await userEvent.click(screen.getByRole("button", { name: "View Local dev env content" }));
+    await userEvent.click(screen.getByRole("button", { name: "设置" }));
+    await userEvent.click(screen.getByRole("button", { name: "查看 Local dev 的 .env 内容" }));
 
     const content = await screen.findByTestId("env-source-content");
     expect(content.textContent).toBe("# kept comment\nDUP=one\n\nDUP=two\nBROKEN=\"unterminated\n");
-    expect(screen.queryByRole("button", { name: /download/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /copy full env/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /下载/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /复制完整 .env/ })).not.toBeInTheDocument();
     expect(fetch).toHaveBeenCalledWith(
       "/api/sources/local-dev/content",
       expect.objectContaining({ method: "POST" })
@@ -227,15 +228,15 @@ describe("App", () => {
     render(<App />);
 
     await screen.findByText("DATABASE_URL");
-    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
-    await userEvent.click(screen.getByRole("button", { name: "View Local dev env content" }));
+    await userEvent.click(screen.getByRole("button", { name: "设置" }));
+    await userEvent.click(screen.getByRole("button", { name: "查看 Local dev 的 .env 内容" }));
     expect(await screen.findByTestId("env-source-content")).toHaveTextContent("DUP=one");
 
-    await userEvent.click(screen.getByRole("button", { name: "Close env content viewer" }));
-    await userEvent.click(screen.getByRole("button", { name: "View Local prod env content" }));
+    await userEvent.click(screen.getByRole("button", { name: "关闭 .env 内容查看器" }));
+    await userEvent.click(screen.getByRole("button", { name: "查看 Local prod 的 .env 内容" }));
 
-    expect(await screen.findByText("Source read failed")).toBeInTheDocument();
-    expect(screen.getByText("Local file path was not found.")).toBeInTheDocument();
+    expect(await screen.findByText("来源读取失败")).toBeInTheDocument();
+    expect(screen.getByText("本地文件路径不存在。")).toBeInTheDocument();
     expect(screen.queryByText("DUP=one")).not.toBeInTheDocument();
   });
 });
@@ -329,7 +330,7 @@ function compareWithFailedSshFixture(): EnvComparisonResult {
         status: "failed",
         keyCount: 0,
         errorType: "auth_failed",
-        errorMessage: "SSH authentication failed. Check the username, key, agent, and Keychain reference."
+        errorMessage: "SSH 认证失败。请检查用户名、密钥、agent 和 Keychain 引用。"
       }
     ],
     summary: {
@@ -361,7 +362,7 @@ function healthFixture(): EnvHealthResult {
     status: "success",
     keyCount: 2,
     values: { DATABASE_URL: "postgres://local", EMPTY: "" },
-    issues: [{ type: "empty_value", severity: "warning", key: "EMPTY", message: "Key EMPTY has an empty value." }],
+    issues: [{ type: "empty_value", severity: "warning", key: "EMPTY", message: "键 EMPTY 为空值。" }],
     summary: {
       duplicate_key: 0,
       parse_failure: 0,
@@ -390,7 +391,7 @@ function failedSshHealthFixture(): EnvHealthResult {
       illegal_key_name: 0
     },
     errorType: "auth_failed",
-    errorMessage: "SSH authentication failed. Check the username, key, agent, and Keychain reference."
+    errorMessage: "SSH 认证失败。请检查用户名、密钥、agent 和 Keychain 引用。"
   };
 }
 

@@ -174,7 +174,7 @@ export class SettingsStore {
   updateLocalFileSource(id: string, input: UpdateLocalFileSourceInput): EnvSource {
     const current = this.getSource(id);
     if (!current || current.type !== "local-file") {
-      throw new Error("Local source not found.");
+      throw new Error("未找到本地文件来源。");
     }
 
     const updated = {
@@ -202,7 +202,7 @@ export class SettingsStore {
   updateSshRemoteFileSource(id: string, input: UpdateSshRemoteFileSourceInput): EnvSource {
     const current = this.getSource(id);
     if (!current || current.type !== "ssh-remote-file" || !current.sshRemoteFile) {
-      throw new Error("SSH source not found.");
+      throw new Error("未找到 SSH 来源。");
     }
 
     const updated = {

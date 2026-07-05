@@ -60,7 +60,7 @@ describe("importLocalSeed", () => {
         localFile: { filePath: "/tmp/local-dev.env" }
       }
     ]);
-    expect(logs.join("\n")).toContain("Imported 1 local source setting");
+    expect(logs.join("\n")).toContain("已导入 1 个本地来源设置。");
     expect(logs.join("\n")).not.toContain(sentinel);
     expect(readFileSync(dbPath, "utf8")).not.toContain(sentinel);
   });

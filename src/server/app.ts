@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import staticPlugin from "@fastify/static";
 import { buildComparison } from "../shared/comparison";
+import { apiErrorMessages } from "../shared/displayText";
 import type { EnvSource, SshRemoteFileConfig } from "../shared/types";
 import { getDefaultDbPath } from "./paths";
 import { SettingsStore } from "./settingsStore";
@@ -37,12 +38,12 @@ export async function buildApp({ store, sessionToken, uiOrigin }: BuildAppOption
 
     const origin = request.headers.origin;
     if (origin && origin !== uiOrigin) {
-      await reply.code(403).send({ error: "local_origin_required" });
+      await sendApiError(reply, 403, "local_origin_required");
       return reply;
     }
 
     if (request.headers[tokenHeader] !== sessionToken) {
-      await reply.code(401).send({ error: "session_token_required" });
+      await sendApiError(reply, 401, "session_token_required");
       return reply;
     }
   });
@@ -88,7 +89,7 @@ export async function buildApp({ store, sessionToken, uiOrigin }: BuildAppOption
     if (payload.type === "ssh-remote-file") {
       const sshRemoteFile = parseSshRemoteFilePayload(payload.sshRemoteFile);
       if (!sshRemoteFile) {
-        return reply.code(422).send({ error: "invalid_ssh_source" });
+        return sendApiError(reply, 422, "invalid_ssh_source");
       }
 
       const source = store.createSshRemoteFileSource({
@@ -101,7 +102,7 @@ export async function buildApp({ store, sessionToken, uiOrigin }: BuildAppOption
       return reply.code(201).send({ source });
     }
 
-      return reply.code(422).send({ error: "unsupported_source_type" });
+      return sendApiError(reply, 422, "unsupported_source_type");
   });
 
   app.patch("/api/sources/:id", async (request, reply) => {
@@ -116,13 +117,13 @@ export async function buildApp({ store, sessionToken, uiOrigin }: BuildAppOption
 
     const current = findSource(store, id);
     if (!current) {
-      return reply.code(404).send({ error: "source_not_found" });
+      return sendApiError(reply, 404, "source_not_found");
     }
 
     if (current.type === "ssh-remote-file") {
       const sshRemoteFile = payload.sshRemoteFile === undefined ? undefined : parseSshRemoteFilePayload(payload.sshRemoteFile);
       if (payload.sshRemoteFile !== undefined && !sshRemoteFile) {
-        return reply.code(422).send({ error: "invalid_ssh_source" });
+        return sendApiError(reply, 422, "invalid_ssh_source");
       }
       const source = store.updateSshRemoteFileSource(id, {
         name: payload.name,
@@ -156,7 +157,7 @@ export async function buildApp({ store, sessionToken, uiOrigin }: BuildAppOption
   app.post("/api/sources/:id/test", async (request, reply) => {
     const source = findSource(store, (request.params as { id: string }).id);
     if (!source) {
-      return reply.code(404).send({ error: "source_not_found" });
+      return sendApiError(reply, 404, "source_not_found");
     }
     return testSourceReadability(source);
   });
@@ -164,7 +165,7 @@ export async function buildApp({ store, sessionToken, uiOrigin }: BuildAppOption
   app.post("/api/sources/:id/content", async (request, reply) => {
     const source = findSource(store, (request.params as { id: string }).id);
     if (!source) {
-      return reply.code(404).send({ error: "source_not_found" });
+      return sendApiError(reply, 404, "source_not_found");
     }
     return readSourceRawContent(source);
   });
@@ -181,7 +182,7 @@ export async function buildApp({ store, sessionToken, uiOrigin }: BuildAppOption
     const payload = request.body as { sourceId?: string };
     const source = payload.sourceId ? findSource(store, payload.sourceId) : undefined;
     if (!source) {
-      return reply.code(404).send({ error: "source_not_found" });
+      return sendApiError(reply, 404, "source_not_found");
     }
     return readSourceHealth(source);
   });
@@ -206,9 +207,9 @@ export async function startServer(options: StartServerOptions = {}) {
   await app.listen({ host: bindHost, port });
 
   const url = `${uiOrigin}/?token=${encodeURIComponent(sessionToken)}`;
-  console.log(`Env Config Lens is listening on ${uiOrigin}`);
-  console.log(`Open ${url}`);
-  console.log("Startup token is required for local UI API calls.");
+  console.log(`Env Config Lens 正在监听 ${uiOrigin}`);
+  console.log(`打开 ${url}`);
+  console.log("本地 UI API 调用需要启动会话令牌。");
 
   if (options.openBrowser) {
     spawn("open", [url], { detached: true, stdio: "ignore" }).unref();
@@ -221,18 +222,33 @@ function findSource(store: SettingsStore, sourceId: string) {
   return store.getSource(sourceId);
 }
 
+function sendApiError(reply: FastifyReply, statusCode: number, error: keyof typeof apiErrorMessages) {
+  return reply.code(statusCode).send({
+    error,
+    message: apiErrorMessages[error]
+  });
+}
+
 function requiredString(value: unknown, field: string) {
   if (typeof value !== "string" || !value.trim()) {
-    throw new Error(`${field} is required.`);
+    throw new Error(`${labelRequiredField(field)}不能为空。`);
   }
   return value;
 }
 
 function sanitizeErrorMessage(error: unknown) {
-  if (error instanceof Error && /required|not found/i.test(error.message)) {
+  if (error instanceof Error && /不能为空|未找到|not found/i.test(error.message)) {
     return error.message;
   }
-  return "The request could not be completed.";
+  return apiErrorMessages.internal_error;
+}
+
+function labelRequiredField(field: string) {
+  const labels: Record<string, string> = {
+    name: "来源名称",
+    filePath: "本地 .env 路径"
+  };
+  return labels[field] ?? field;
 }
 
 function parseSshRemoteFilePayload(value: unknown): SshRemoteFileConfig | undefined {
