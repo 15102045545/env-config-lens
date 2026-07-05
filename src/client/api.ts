@@ -1,4 +1,4 @@
-import type { EnvComparisonResult, EnvHealthResult, EnvSource, SshRemoteFileConfig } from "../shared/types";
+import type { EnvComparisonResult, EnvHealthResult, EnvSource, EnvSourceContentResult, SshRemoteFileConfig } from "../shared/types";
 
 export interface RuntimeBoundary {
   bindHost: string;
@@ -64,6 +64,10 @@ export class ApiClient {
       `/api/sources/${sourceId}/test`,
       { method: "POST" }
     );
+  }
+
+  readSourceContent(sourceId: string) {
+    return this.request<EnvSourceContentResult>(`/api/sources/${sourceId}/content`, { method: "POST" });
   }
 
   pickEnvPath() {

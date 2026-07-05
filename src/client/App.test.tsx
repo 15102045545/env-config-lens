@@ -3,13 +3,14 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { EnvComparisonResult, EnvHealthResult, EnvSource, SshRemoteFileConfig } from "../shared/types";
+import type { EnvComparisonResult, EnvHealthResult, EnvSource, EnvSourceContentResult, SshRemoteFileConfig } from "../shared/types";
 import { App } from "./App";
 
 const token = "ui-test-token";
 let mockSources: EnvSource[] = [];
 let mockComparison: EnvComparisonResult;
 let mockHealth: EnvHealthResult;
+let mockSourceContentById: Record<string, EnvSourceContentResult>;
 
 beforeEach(() => {
   window.history.pushState({}, "", `/?token=${token}`);
@@ -19,6 +20,21 @@ beforeEach(() => {
   ];
   mockComparison = compareFixture();
   mockHealth = healthFixture();
+  mockSourceContentById = {
+    "local-dev": {
+      sourceId: "local-dev",
+      sourceName: "Local dev",
+      status: "success",
+      content: "# kept comment\nDUP=one\n\nDUP=two\nBROKEN=\"unterminated\n"
+    },
+    "local-prod": {
+      sourceId: "local-prod",
+      sourceName: "Local prod",
+      status: "failed",
+      errorType: "path_not_found",
+      errorMessage: "Local file path was not found."
+    }
+  };
   Object.assign(navigator, {
     clipboard: {
       writeText: vi.fn().mockResolvedValue(undefined)
@@ -57,6 +73,10 @@ beforeEach(() => {
       const id = url.split("/api/sources/")[1];
       mockSources = mockSources.filter((item) => item.id !== id);
       return jsonResponse(undefined, 204);
+    }
+    if (url.includes("/api/sources/") && url.endsWith("/content") && method === "POST") {
+      const id = url.split("/api/sources/")[1].split("/content")[0];
+      return jsonResponse(mockSourceContentById[id] ?? { error: "source_not_found" }, mockSourceContentById[id] ? 200 : 404);
     }
     if (url.endsWith("/api/compare")) {
       return jsonResponse(mockComparison);
@@ -184,6 +204,39 @@ describe("App", () => {
 
     expect(await screen.findByText("Source read failed")).toBeInTheDocument();
     expect(screen.getByText("SSH authentication failed. Check the username, key, agent, and Keychain reference.")).toBeInTheDocument();
+  });
+
+  it("opens a read-only raw env viewer from Settings", async () => {
+    render(<App />);
+
+    await screen.findByText("DATABASE_URL");
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await userEvent.click(screen.getByRole("button", { name: "View Local dev env content" }));
+
+    const content = await screen.findByTestId("env-source-content");
+    expect(content.textContent).toBe("# kept comment\nDUP=one\n\nDUP=two\nBROKEN=\"unterminated\n");
+    expect(screen.queryByRole("button", { name: /download/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /copy full env/i })).not.toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/sources/local-dev/content",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("shows raw env read failures without keeping stale content", async () => {
+    render(<App />);
+
+    await screen.findByText("DATABASE_URL");
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await userEvent.click(screen.getByRole("button", { name: "View Local dev env content" }));
+    expect(await screen.findByTestId("env-source-content")).toHaveTextContent("DUP=one");
+
+    await userEvent.click(screen.getByRole("button", { name: "Close env content viewer" }));
+    await userEvent.click(screen.getByRole("button", { name: "View Local prod env content" }));
+
+    expect(await screen.findByText("Source read failed")).toBeInTheDocument();
+    expect(screen.getByText("Local file path was not found.")).toBeInTheDocument();
+    expect(screen.queryByText("DUP=one")).not.toBeInTheDocument();
   });
 });
 

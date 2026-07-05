@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import type { EnvHealthResult, EnvSource, EnvSourceReadResult, HealthIssueType, SourceErrorType } from "../shared/types";
+import type { EnvHealthResult, EnvSource, EnvSourceContentResult, EnvSourceReadResult, HealthIssueType, SourceErrorType } from "../shared/types";
 import { parseEnvContent } from "../shared/envParser";
 import { readSshRemoteEnvFile } from "./sshRemoteReader";
 
@@ -63,6 +63,24 @@ export async function testSourceReadability(source: EnvSource): Promise<SourceTe
   };
 }
 
+export async function readSourceRawContent(source: EnvSource): Promise<EnvSourceContentResult> {
+  if (!canReadSource(source)) {
+    return failedRawContent(source, "unsupported_source", "Source type is not supported.");
+  }
+
+  const content = await readSourceContent(source);
+  if (!content.ok) {
+    return failedRawContent(source, content.errorType, content.errorMessage);
+  }
+
+  return {
+    sourceId: source.id,
+    sourceName: source.name,
+    status: "success",
+    content: content.content
+  };
+}
+
 export async function readSourceHealth(source: EnvSource): Promise<EnvHealthResult> {
   if (!canReadSource(source)) {
     return failedHealth(source, "unsupported_source", "Source type is not supported.");
@@ -120,6 +138,16 @@ function failedRead(source: EnvSource, errorType: SourceErrorType, errorMessage:
     sourceName: source.name,
     status: "failed",
     keyCount: 0,
+    errorType,
+    errorMessage
+  };
+}
+
+function failedRawContent(source: EnvSource, errorType: SourceErrorType, errorMessage: string): EnvSourceContentResult {
+  return {
+    sourceId: source.id,
+    sourceName: source.name,
+    status: "failed",
     errorType,
     errorMessage
   };

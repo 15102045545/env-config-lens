@@ -1,6 +1,6 @@
-import { Activity, ChevronDown, ChevronUp, Columns3, Copy, Database, FilePlus2, FolderOpen, RefreshCw, ScanLine, Settings2, ShieldCheck, Trash2 } from "lucide-react";
+import { Activity, ChevronDown, ChevronUp, Columns3, Copy, Database, Eye, FilePlus2, FolderOpen, RefreshCw, ScanLine, Settings2, ShieldCheck, Trash2, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import type { ComparisonStatus, EnvComparisonResult, EnvComparisonRow, EnvHealthResult, EnvSource, HealthIssueType, SshRemoteFileConfig } from "../shared/types";
+import type { ComparisonStatus, EnvComparisonResult, EnvComparisonRow, EnvHealthResult, EnvSource, EnvSourceContentResult, HealthIssueType, SshRemoteFileConfig } from "../shared/types";
 import { ApiClient, type RuntimeBoundary, readStartupToken } from "./api";
 
 type View = "comparison" | "health" | "settings";
@@ -68,6 +68,9 @@ export function App() {
   const [toast, setToast] = useState("");
   const [form, setForm] = useState<SourceFormState>(emptySourceForm);
   const [error, setError] = useState("");
+  const [sourceContentSource, setSourceContentSource] = useState<EnvSource | null>(null);
+  const [sourceContent, setSourceContent] = useState<EnvSourceContentResult | null>(null);
+  const [sourceContentLoading, setSourceContentLoading] = useState(false);
 
   const enabledSources = useMemo(() => sources.filter((source) => source.enabled), [sources]);
 
@@ -271,6 +274,25 @@ export function App() {
     await runCompare(selectedSourceIds);
   }
 
+  async function viewSourceContent(source: EnvSource) {
+    setSourceContentSource(source);
+    setSourceContent(null);
+    setSourceContentLoading(true);
+    try {
+      setSourceContent(await api.readSourceContent(source.id));
+    } catch (contentError) {
+      setSourceContent({
+        sourceId: source.id,
+        sourceName: source.name,
+        status: "failed",
+        errorType: "unknown_error",
+        errorMessage: contentError instanceof Error ? contentError.message : "Source read failed."
+      });
+    } finally {
+      setSourceContentLoading(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#eef3f8] text-[#182230] lg:flex">
       <aside className="border-b border-slate-200 bg-white lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:border-b-0 lg:border-r">
@@ -391,12 +413,26 @@ export function App() {
             }}
             toggleSource={toggleSource}
             moveSource={moveSource}
+            viewSourceContent={viewSourceContent}
             deleteSource={async (sourceId) => {
               await deleteSource(sourceId);
             }}
           />
         )}
       </main>
+
+      {sourceContentSource && (
+        <EnvContentModal
+          source={sourceContentSource}
+          result={sourceContent}
+          loading={sourceContentLoading}
+          onClose={() => {
+            setSourceContentSource(null);
+            setSourceContent(null);
+            setSourceContentLoading(false);
+          }}
+        />
+      )}
 
       <div className={`fixed bottom-4 left-4 right-4 z-50 rounded-md border border-slate-800 bg-[#182230] px-4 py-3 text-sm font-medium text-white shadow-lg transition sm:left-auto sm:w-80 ${toast ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-full opacity-0"}`}>
         {toast || "Copied"}
@@ -717,6 +753,7 @@ function SettingsView(props: {
   testSource: (sourceId: string) => void | Promise<void>;
   toggleSource: (source: EnvSource) => void | Promise<void>;
   moveSource: (sourceId: string, direction: -1 | 1) => void | Promise<void>;
+  viewSourceContent: (source: EnvSource) => void | Promise<void>;
   deleteSource: (sourceId: string) => void | Promise<void>;
 }) {
   return (
@@ -802,9 +839,9 @@ function SettingsView(props: {
           </Panel>
           <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
             <div className="overflow-x-auto">
-              <table className="min-w-[860px] text-left text-sm">
+              <table className="min-w-[940px] text-left text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                  <tr><th className="w-24 border-b border-slate-200 px-4 py-3">Order</th><th className="w-52 border-b border-slate-200 px-3 py-3">Source</th><th className="border-b border-slate-200 px-3 py-3">Read target</th><th className="w-28 border-b border-slate-200 px-3 py-3">State</th><th className="w-44 border-b border-slate-200 px-3 py-3">Test</th><th className="w-24 border-b border-slate-200 px-3 py-3">Delete</th></tr>
+                  <tr><th className="w-24 border-b border-slate-200 px-4 py-3">Order</th><th className="w-52 border-b border-slate-200 px-3 py-3">Source</th><th className="border-b border-slate-200 px-3 py-3">Read target</th><th className="w-28 border-b border-slate-200 px-3 py-3">State</th><th className="w-20 border-b border-slate-200 px-3 py-3">View</th><th className="w-44 border-b border-slate-200 px-3 py-3">Test</th><th className="w-24 border-b border-slate-200 px-3 py-3">Delete</th></tr>
                 </thead>
                 <tbody>
                   {props.sources.map((source) => (
@@ -818,6 +855,7 @@ function SettingsView(props: {
                       <td className="border-b border-slate-200 px-3 py-3"><p className="font-semibold">{source.name}</p><p className="text-xs text-slate-500">{source.type}</p></td>
                       <td className="border-b border-slate-200 px-3 py-3 font-mono text-xs">{readTargetFor(source)}</td>
                       <td className="border-b border-slate-200 px-3 py-3"><button className={source.enabled ? "text-xs font-medium text-emerald-700" : "text-xs font-medium text-slate-500"} onClick={() => props.toggleSource(source)}>{source.enabled ? "Enabled" : "Disabled"}</button></td>
+                      <td className="border-b border-slate-200 px-3 py-3"><button className="rounded-md border border-slate-200 p-2 text-slate-700 hover:bg-slate-50" aria-label={`View ${source.name} env content`} onClick={() => props.viewSourceContent(source)}><Eye className="h-4 w-4" /></button></td>
                       <td className="border-b border-slate-200 px-3 py-3"><button className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700" onClick={() => props.testSource(source.id)}>Test readability</button></td>
                       <td className="border-b border-slate-200 px-3 py-3"><button className="rounded-md border border-red-200 p-2 text-red-700" aria-label={`Delete ${source.name}`} onClick={() => props.deleteSource(source.id)}><Trash2 className="h-4 w-4" /></button></td>
                     </tr>
@@ -846,6 +884,46 @@ function SettingsView(props: {
       </div>
     </section>
   );
+}
+
+function EnvContentModal(props: { source: EnvSource; result: EnvSourceContentResult | null; loading: boolean; onClose: () => void }) {
+  const sourceName = props.result?.sourceName ?? props.source.name;
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/40 p-4">
+      <section role="dialog" aria-modal="true" aria-labelledby="env-content-title" className="flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Env content</p>
+            <h3 id="env-content-title" className="truncate text-base font-semibold">{sourceName}</h3>
+          </div>
+          <button className="rounded-md border border-slate-200 p-2 text-slate-600 hover:bg-slate-50" aria-label="Close env content viewer" onClick={props.onClose}>
+            <X className="h-4 w-4" />
+          </button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-auto p-4">
+          {props.loading && <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">Reading source...</div>}
+          {!props.loading && props.result?.status === "failed" && (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="font-semibold">Source read failed</h3>
+                <span className="font-mono text-xs">{props.result.errorType}</span>
+              </div>
+              <p className="mt-2">{props.result.errorMessage}</p>
+            </div>
+          )}
+          {!props.loading && props.result?.status === "success" && <EnvFileContentViewer content={props.result.content} />}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function EnvFileContentViewer(props: { content: string }) {
+  if (props.content.length === 0) {
+    return <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">Env file is empty.</div>;
+  }
+
+  return <pre data-testid="env-source-content" className="max-h-[60vh] overflow-auto rounded-md bg-slate-950 p-4 font-mono text-xs leading-5 text-slate-50"><code>{props.content}</code></pre>;
 }
 
 function buildSshRemoteFileConfig(form: SourceFormState): SshRemoteFileConfig {

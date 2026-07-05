@@ -51,7 +51,24 @@ vi.mock("./sourceReader", () => ({
     },
     errorType: "auth_failed",
     errorMessage: "SSH authentication failed. Check the username, key, agent, and Keychain reference."
-  }))
+  })),
+  readSourceRawContent: vi.fn(async (source: EnvSource) => {
+    if (source.name === "prod-api-readable") {
+      return {
+        sourceId: source.id,
+        sourceName: source.name,
+        status: "success",
+        content: "# remote comment\nDUP=one\n\nDUP=two\nBROKEN=\"unterminated\n"
+      };
+    }
+    return {
+      sourceId: source.id,
+      sourceName: source.name,
+      status: "failed",
+      errorType: "auth_failed",
+      errorMessage: "SSH authentication failed. Check the username, key, agent, and Keychain reference."
+    };
+  })
 }));
 
 const token = "test-session-token";
@@ -203,6 +220,44 @@ describe("SSH source API workflow", () => {
         valuesBySourceId: { [local.id]: "safe-local-value" }
       })
     ]);
+  });
+
+  it("returns SSH raw content through the dedicated content route", async () => {
+    const source = await createSshAliasSource("prod-api-readable");
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/sources/${source.id}/content`,
+      headers: authHeaders
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      sourceId: source.id,
+      sourceName: "prod-api-readable",
+      status: "success",
+      content: "# remote comment\nDUP=one\n\nDUP=two\nBROKEN=\"unterminated\n"
+    });
+  });
+
+  it("returns sanitized SSH raw content failures", async () => {
+    const source = await createSshAliasSource("prod-api");
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/sources/${source.id}/content`,
+      headers: authHeaders
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      sourceId: source.id,
+      sourceName: "prod-api",
+      status: "failed",
+      errorType: "auth_failed",
+      errorMessage: "SSH authentication failed. Check the username, key, agent, and Keychain reference."
+    });
+    expect(response.body).not.toContain("ECL_SENTINEL_REMOTE_ENV_VALUE_93F7");
   });
 });
 

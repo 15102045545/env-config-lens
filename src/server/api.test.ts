@@ -189,6 +189,58 @@ describe("local source workflow", () => {
     });
     expect(response.body).not.toContain("unterminated\n");
   });
+
+  it("returns raw local source content without parsing or reordering it", async () => {
+    const rawContent = "# kept comment\nDUP=one\n\nDUP=two\nBROKEN=\"unterminated\n";
+    const envPath = join(tempDir, "raw.env");
+    writeFileSync(envPath, rawContent, "utf8");
+    const source = await createSource("raw", envPath);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/sources/${source.id}/content`,
+      headers: authHeaders
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      sourceId: source.id,
+      sourceName: "raw",
+      status: "success",
+      content: rawContent
+    });
+  });
+
+  it("returns source_not_found for unknown raw content requests", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/sources/missing-source/content",
+      headers: authHeaders
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: "source_not_found" });
+  });
+
+  it("returns sanitized local raw content read failures without env contents", async () => {
+    const source = await createSource("missing", join(tempDir, "does-not-exist.env"));
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/sources/${source.id}/content`,
+      headers: authHeaders
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      sourceId: source.id,
+      sourceName: "missing",
+      status: "failed",
+      errorType: "path_not_found",
+      errorMessage: "Local file path was not found."
+    });
+    expect(response.body).not.toContain("TOKEN=");
+  });
 });
 
 async function createSource(name: string, filePath: string) {

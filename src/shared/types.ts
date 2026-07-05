@@ -53,6 +53,21 @@ export interface EnvSourceReadResult {
   errorMessage?: string;
 }
 
+export type EnvSourceContentResult =
+  | {
+      sourceId: string;
+      sourceName: string;
+      status: "success";
+      content: string;
+    }
+  | {
+      sourceId: string;
+      sourceName: string;
+      status: "failed";
+      errorType: SourceErrorType;
+      errorMessage: string;
+    };
+
 export interface EnvComparisonRow {
   key: string;
   status: ComparisonStatus;

@@ -9,7 +9,7 @@ import type { EnvSource, SshRemoteFileConfig } from "../shared/types";
 import { getDefaultDbPath } from "./paths";
 import { SettingsStore } from "./settingsStore";
 import { pickEnvFilePath, pickPrivateKeyPath } from "./fileDialog";
-import { readSourceForComparison, readSourceHealth, testSourceReadability } from "./sourceReader";
+import { readSourceForComparison, readSourceHealth, readSourceRawContent, testSourceReadability } from "./sourceReader";
 
 const tokenHeader = "x-env-config-lens-token";
 const bindHost = "127.0.0.1";
@@ -159,6 +159,14 @@ export async function buildApp({ store, sessionToken, uiOrigin }: BuildAppOption
       return reply.code(404).send({ error: "source_not_found" });
     }
     return testSourceReadability(source);
+  });
+
+  app.post("/api/sources/:id/content", async (request, reply) => {
+    const source = findSource(store, (request.params as { id: string }).id);
+    if (!source) {
+      return reply.code(404).send({ error: "source_not_found" });
+    }
+    return readSourceRawContent(source);
   });
 
   app.post("/api/compare", async (request) => {
