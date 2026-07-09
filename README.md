@@ -83,6 +83,38 @@ Requirements:
 - Node.js `>=24.14.0`.
 - pnpm `>=11.0.0`.
 
+### macOS Daily Runtime
+
+For this local workspace, the long-running service is expected to run as a macOS user LaunchAgent instead of a process attached to a Codex or terminal session.
+
+- LaunchAgent label: `com.env-config-lens.local`.
+- Installed plist: `~/Library/LaunchAgents/com.env-config-lens.local.plist`.
+- LaunchAgent entrypoint: `scripts/runLaunchAgentService.sh`.
+- Working directory: this repository checkout.
+- Default service address: `http://127.0.0.1:4173/`.
+- Startup URL and token log: `.local/logs/env-config-lens.launchd.out.log`.
+- Error log: `.local/logs/env-config-lens.launchd.err.log`.
+
+The startup log is overwritten on every LaunchAgent restart, so it always shows the current token-bearing local URL and LAN URL.
+
+Check or restart the daily service:
+
+```bash
+launchctl print gui/$(id -u)/com.env-config-lens.local
+launchctl kickstart -k gui/$(id -u)/com.env-config-lens.local
+```
+
+After changing frontend code, rebuild the static client before restarting the LaunchAgent:
+
+```bash
+pnpm exec vite build
+launchctl kickstart -k gui/$(id -u)/com.env-config-lens.local
+```
+
+`pnpm start` remains useful for one-off foreground debugging, but it should not be used as the normal persistent runtime in this workspace.
+
+### Foreground Debug Startup
+
 Install and start:
 
 ```bash
